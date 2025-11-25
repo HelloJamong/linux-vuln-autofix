@@ -432,49 +432,329 @@ check_u08() {
     fi
 }
 
-# U-09: UMASK 설정 관리
+# U-09: /etc/hosts 파일 소유자 및 권한 설정 (위험도: 상)
 check_u09() {
     local check_id="U-09"
-    local check_name="UMASK Configuration"
+    local check_name="/etc/hosts File Owner and Permission"
+    local risk_level="HIGH"
 
-    local umask_value=""
+    local hosts_file="/etc/hosts"
 
-    if [ -f /etc/profile ]; then
-        umask_value=$(grep -i "^umask" /etc/profile | tail -1 | awk '{print $2}')
+    if [ ! -f "$hosts_file" ]; then
+        log_result "$check_id" "$check_name" "FAIL" "[Risk: ${risk_level}] /etc/hosts file does not exist"
+        return
     fi
 
-    if [ -n "$umask_value" ]; then
-        if [ "$umask_value" == "022" ] || [ "$umask_value" == "027" ]; then
-            log_result "$check_id" "$check_name" "PASS" "UMASK value: ${umask_value}"
-        else
-            log_result "$check_id" "$check_name" "FAIL" "UMASK value is inappropriate (current: ${umask_value}, recommended: 022 or 027)"
-        fi
+    local owner=$(stat -c %U "$hosts_file")
+    local perm=$(stat -c %a "$hosts_file")
+
+    local fail_reasons=""
+
+    # 소유자가 root인지 확인
+    if [ "$owner" != "root" ]; then
+        fail_reasons="${fail_reasons}owner is ${owner} (should be root), "
+    fi
+
+    # 권한이 600 이하인지 확인
+    if [ "$perm" -gt 600 ]; then
+        fail_reasons="${fail_reasons}permission is ${perm} (should be 600 or less)"
+    fi
+
+    if [ -z "$fail_reasons" ]; then
+        log_result "$check_id" "$check_name" "PASS" "[Risk: ${risk_level}] Owner: ${owner}, Permission: ${perm}"
     else
-        log_result "$check_id" "$check_name" "FAIL" "UMASK is not configured"
+        log_result "$check_id" "$check_name" "FAIL" "[Risk: ${risk_level}] ${fail_reasons}"
     fi
 }
 
-# U-10: 불필요한 서비스 비활성화
+# U-10: /etc/(x)inetd.conf 파일 소유자 및 권한 설정 (위험도: 상)
 check_u10() {
     local check_id="U-10"
-    local check_name="Unnecessary Services Disabled"
+    local check_name="/etc/(x)inetd.conf File Owner and Permission"
+    local risk_level="HIGH"
 
-    local unnecessary_services=("telnet" "rsh" "rlogin" "rexec" "finger" "tftp")
-    local enabled_services=""
+    # inetd.conf 또는 xinetd.conf 파일 확인
+    local inetd_file=""
+    if [ -f "/etc/inetd.conf" ]; then
+        inetd_file="/etc/inetd.conf"
+    elif [ -f "/etc/xinetd.conf" ]; then
+        inetd_file="/etc/xinetd.conf"
+    else
+        log_result "$check_id" "$check_name" "N/A" "[Risk: ${risk_level}] /etc/inetd.conf or /etc/xinetd.conf file does not exist"
+        return
+    fi
 
-    for service in "${unnecessary_services[@]}"; do
-        if systemctl is-enabled "${service}.socket" 2>/dev/null | grep -q "enabled"; then
-            enabled_services="${enabled_services} ${service}"
-        fi
-        if systemctl is-enabled "${service}" 2>/dev/null | grep -q "enabled"; then
-            enabled_services="${enabled_services} ${service}"
+    local owner=$(stat -c %U "$inetd_file")
+    local perm=$(stat -c %a "$inetd_file")
+
+    local fail_reasons=""
+
+    # 소유자가 root인지 확인
+    if [ "$owner" != "root" ]; then
+        fail_reasons="${fail_reasons}owner is ${owner} (should be root), "
+    fi
+
+    # 권한이 600인지 확인
+    if [ "$perm" -ne 600 ]; then
+        fail_reasons="${fail_reasons}permission is ${perm} (should be 600)"
+    fi
+
+    if [ -z "$fail_reasons" ]; then
+        log_result "$check_id" "$check_name" "PASS" "[Risk: ${risk_level}] File: ${inetd_file}, Owner: ${owner}, Permission: ${perm}"
+    else
+        log_result "$check_id" "$check_name" "FAIL" "[Risk: ${risk_level}] File: ${inetd_file}, ${fail_reasons}"
+    fi
+}
+
+# U-11: /etc/syslog.conf 파일 소유자 및 권한 설정 (위험도: 상)
+check_u11() {
+    local check_id="U-11"
+    local check_name="/etc/syslog.conf File Owner and Permission"
+    local risk_level="HIGH"
+
+    # syslog.conf, rsyslog.conf 또는 syslog-ng.conf 파일 확인
+    local syslog_file=""
+    if [ -f "/etc/syslog.conf" ]; then
+        syslog_file="/etc/syslog.conf"
+    elif [ -f "/etc/rsyslog.conf" ]; then
+        syslog_file="/etc/rsyslog.conf"
+    elif [ -f "/etc/syslog-ng/syslog-ng.conf" ]; then
+        syslog_file="/etc/syslog-ng/syslog-ng.conf"
+    else
+        log_result "$check_id" "$check_name" "N/A" "[Risk: ${risk_level}] /etc/syslog.conf or /etc/rsyslog.conf file does not exist"
+        return
+    fi
+
+    local owner=$(stat -c %U "$syslog_file")
+    local perm=$(stat -c %a "$syslog_file")
+
+    local fail_reasons=""
+
+    # 소유자가 root, bin, sys 중 하나인지 확인
+    if [[ "$owner" != "root" && "$owner" != "bin" && "$owner" != "sys" ]]; then
+        fail_reasons="${fail_reasons}owner is ${owner} (should be root, bin, or sys), "
+    fi
+
+    # 권한이 640 이하인지 확인
+    if [ "$perm" -gt 640 ]; then
+        fail_reasons="${fail_reasons}permission is ${perm} (should be 640 or less)"
+    fi
+
+    if [ -z "$fail_reasons" ]; then
+        log_result "$check_id" "$check_name" "PASS" "[Risk: ${risk_level}] File: ${syslog_file}, Owner: ${owner}, Permission: ${perm}"
+    else
+        log_result "$check_id" "$check_name" "FAIL" "[Risk: ${risk_level}] File: ${syslog_file}, ${fail_reasons}"
+    fi
+}
+
+# U-12: /etc/services 파일 소유자 및 권한 설정 (위험도: 상)
+check_u12() {
+    local check_id="U-12"
+    local check_name="/etc/services File Owner and Permission"
+    local risk_level="HIGH"
+
+    local services_file="/etc/services"
+
+    if [ ! -f "$services_file" ]; then
+        log_result "$check_id" "$check_name" "FAIL" "[Risk: ${risk_level}] /etc/services file does not exist"
+        return
+    fi
+
+    local owner=$(stat -c %U "$services_file")
+    local perm=$(stat -c %a "$services_file")
+
+    local fail_reasons=""
+
+    # 소유자가 root, bin, sys 중 하나인지 확인
+    if [[ "$owner" != "root" && "$owner" != "bin" && "$owner" != "sys" ]]; then
+        fail_reasons="${fail_reasons}owner is ${owner} (should be root, bin, or sys), "
+    fi
+
+    # 권한이 644 이하인지 확인
+    if [ "$perm" -gt 644 ]; then
+        fail_reasons="${fail_reasons}permission is ${perm} (should be 644 or less)"
+    fi
+
+    if [ -z "$fail_reasons" ]; then
+        log_result "$check_id" "$check_name" "PASS" "[Risk: ${risk_level}] Owner: ${owner}, Permission: ${perm}"
+    else
+        log_result "$check_id" "$check_name" "FAIL" "[Risk: ${risk_level}] ${fail_reasons}"
+    fi
+}
+
+# U-13: SUID, SGID 설정 파일 점검 (위험도: 상)
+check_u13() {
+    local check_id="U-13"
+    local check_name="SUID and SGID File Check"
+    local risk_level="HIGH"
+
+    # SUID, SGID가 설정되면 안 되는 주요 실행파일 목록
+    local critical_files=(
+        "/sbin/dump"
+        "/sbin/restore"
+        "/sbin/unix_chkpwd"
+        "/usr/bin/at"
+        "/usr/bin/lpq"
+        "/usr/bin/lpq-lpd"
+        "/usr/bin/lpr"
+        "/usr/bin/lpr-lpd"
+        "/usr/bin/lprm"
+        "/usr/bin/lprm-lpd"
+        "/usr/bin/newgrp"
+        "/usr/sbin/traceroute"
+        "/usr/bin/traceroute6"
+        "/usr/bin/traceroute6.iputils"
+    )
+
+    local vulnerable_files=""
+    local found_count=0
+
+    for file in "${critical_files[@]}"; do
+        if [ -f "$file" ]; then
+            # SUID(4000) 또는 SGID(2000) 비트가 설정되어 있는지 확인
+            local perm=$(stat -c %a "$file" 2>/dev/null)
+            if [ -n "$perm" ]; then
+                # 첫 번째 자리가 4(SUID), 2(SGID), 6(SUID+SGID)인지 확인
+                local first_digit=${perm:0:1}
+                if [[ "$first_digit" == "4" || "$first_digit" == "2" || "$first_digit" == "6" ]]; then
+                    vulnerable_files="${vulnerable_files}${file}(${perm}), "
+                    ((found_count++))
+                fi
+            fi
         fi
     done
 
-    if [ -z "$enabled_services" ]; then
-        log_result "$check_id" "$check_name" "PASS" "All unnecessary services are disabled"
+    if [ -z "$vulnerable_files" ]; then
+        log_result "$check_id" "$check_name" "PASS" "[Risk: ${risk_level}] No critical files with SUID/SGID found"
     else
-        log_result "$check_id" "$check_name" "FAIL" "Enabled unnecessary services:${enabled_services}"
+        # 최대 10개까지만 표시
+        if [ "$found_count" -gt 10 ]; then
+            local display_files=$(echo "$vulnerable_files" | cut -d',' -f1-10)
+            log_result "$check_id" "$check_name" "FAIL" "[Risk: ${risk_level}] Found ${found_count} files with SUID/SGID: ${display_files}, ... and $((found_count - 10)) more"
+        else
+            log_result "$check_id" "$check_name" "FAIL" "[Risk: ${risk_level}] Files with SUID/SGID: ${vulnerable_files}"
+        fi
+    fi
+}
+
+# U-14: 사용자, 시스템 시작파일 및 환경파일 소유자 및 권한 설정 (위험도: 상)
+check_u14() {
+    local check_id="U-14"
+    local check_name="User and System Startup Files Owner and Permission"
+    local risk_level="HIGH"
+
+    # 검사할 환경변수 파일 목록
+    local env_files=(
+        ".bashrc"
+        ".bash_profile"
+        ".profile"
+        ".cshrc"
+        ".login"
+        ".kshrc"
+        ".bash_login"
+        ".zshrc"
+    )
+
+    local vulnerable_files=""
+    local found_count=0
+
+    # /etc/passwd에서 일반 사용자 홈 디렉터리 추출 (UID >= 1000)
+    while IFS=: read -r username _ uid _ _ homedir _; do
+        # UID가 1000 이상인 일반 사용자만 검사
+        if [ "$uid" -ge 1000 ] && [ -d "$homedir" ]; then
+            for env_file in "${env_files[@]}"; do
+                local full_path="${homedir}/${env_file}"
+
+                if [ -f "$full_path" ]; then
+                    local owner=$(stat -c %U "$full_path" 2>/dev/null)
+                    local perm=$(stat -c %a "$full_path" 2>/dev/null)
+
+                    # 조건1: 소유자가 root 또는 해당 계정인지 확인
+                    if [[ "$owner" != "root" && "$owner" != "$username" ]]; then
+                        vulnerable_files="${vulnerable_files}${full_path}(owner:${owner}), "
+                        ((found_count++))
+                        continue
+                    fi
+
+                    # 조건2: other에게 쓰기 권한이 없는지 확인 (권한의 마지막 자리가 2, 3, 6, 7이 아니어야 함)
+                    local last_digit=${perm: -1}
+                    if [[ "$last_digit" == "2" || "$last_digit" == "3" || "$last_digit" == "6" || "$last_digit" == "7" ]]; then
+                        vulnerable_files="${vulnerable_files}${full_path}(perm:${perm}), "
+                        ((found_count++))
+                        continue
+                    fi
+
+                    # 조건3: group에게 쓰기 권한이 없는지 확인 (권한의 두 번째 자리가 2, 3, 6, 7이 아니어야 함)
+                    local second_digit=${perm:1:1}
+                    if [[ "$second_digit" == "2" || "$second_digit" == "3" || "$second_digit" == "6" || "$second_digit" == "7" ]]; then
+                        vulnerable_files="${vulnerable_files}${full_path}(perm:${perm}), "
+                        ((found_count++))
+                    fi
+                fi
+            done
+        fi
+    done < /etc/passwd
+
+    if [ -z "$vulnerable_files" ]; then
+        log_result "$check_id" "$check_name" "PASS" "[Risk: ${risk_level}] All environment files have proper owner and permissions"
+    else
+        # 최대 10개까지만 표시
+        if [ "$found_count" -gt 10 ]; then
+            local display_files=$(echo "$vulnerable_files" | cut -d',' -f1-10)
+            log_result "$check_id" "$check_name" "FAIL" "[Risk: ${risk_level}] Found ${found_count} files with improper owner/permissions: ${display_files}, ... and $((found_count - 10)) more"
+        else
+            log_result "$check_id" "$check_name" "FAIL" "[Risk: ${risk_level}] Files with improper owner/permissions: ${vulnerable_files}"
+        fi
+    fi
+}
+
+# U-15: world writable 파일 점검 (위험도: 상)
+check_u15() {
+    local check_id="U-15"
+    local check_name="World Writable File Check"
+    local risk_level="HIGH"
+
+    # 시스템 중요 디렉터리에서 world writable 파일 검색
+    # -perm -002: other에게 쓰기 권한이 있는 파일
+    # -type f: 일반 파일만 검색 (디렉터리 제외)
+    local critical_paths=(
+        "/etc"
+        "/bin"
+        "/sbin"
+        "/usr/bin"
+        "/usr/sbin"
+        "/usr/local/bin"
+        "/usr/local/sbin"
+    )
+
+    local writable_files=""
+    local found_count=0
+
+    for path in "${critical_paths[@]}"; do
+        if [ -d "$path" ]; then
+            # world writable 파일 검색 (sticky bit가 있는 파일 제외)
+            local files=$(find "$path" -type f -perm -002 ! -perm -1000 2>/dev/null)
+
+            if [ -n "$files" ]; then
+                while IFS= read -r file; do
+                    local perm=$(stat -c %a "$file" 2>/dev/null)
+                    writable_files="${writable_files}${file}(${perm}), "
+                    ((found_count++))
+                done <<< "$files"
+            fi
+        fi
+    done
+
+    if [ -z "$writable_files" ]; then
+        log_result "$check_id" "$check_name" "PASS" "[Risk: ${risk_level}] No world writable files found in critical directories"
+    else
+        # 최대 10개까지만 표시
+        if [ "$found_count" -gt 10 ]; then
+            local display_files=$(echo "$writable_files" | cut -d',' -f1-10)
+            log_result "$check_id" "$check_name" "FAIL" "[Risk: ${risk_level}] Found ${found_count} world writable files: ${display_files}, ... and $((found_count - 10)) more"
+        else
+            log_result "$check_id" "$check_name" "FAIL" "[Risk: ${risk_level}] World writable files: ${writable_files}"
+        fi
     fi
 }
 
@@ -508,6 +788,68 @@ main() {
     check_u08
     check_u09
     check_u10
+    check_u11
+    check_u12
+    check_u13
+    check_u14
+    check_u15
+    check_u16
+    check_u17
+    check_u18
+    check_u19
+    check_u20
+    check_u21
+    check_u22
+    check_u23
+    check_u24
+    check_u25
+    check_u26
+    check_u27
+    check_u28
+    check_u29
+    check_u30
+    check_u31
+    check_u32
+    check_u33
+    check_u34
+    check_u35
+    check_u36
+    check_u37
+    check_u38
+    check_u39
+    check_u40
+    check_u41
+    check_u42
+    check_u43
+    check_u44
+    check_u45
+    check_u46
+    check_u47
+    check_u48
+    check_u49
+    check_u50
+    check_u51
+    check_u52
+    check_u53
+    check_u54
+    check_u55
+    check_u56
+    check_u57
+    check_u58
+    check_u59
+    check_u60
+    check_u61
+    check_u62
+    check_u63
+    check_u64
+    check_u65
+    check_u66
+    check_u67
+    check_u68
+    check_u69
+    check_u70
+    check_u71
+    check_u72
 
     # 결과 요약
     echo "" >> "$RESULT_FILE"
