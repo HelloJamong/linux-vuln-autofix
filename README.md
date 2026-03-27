@@ -9,7 +9,8 @@ linux-vuln-autofix/
 ├── README.md                          # 프로젝트 설명 문서
 ├── linux_vuln_check.sh                # Linux 취약점 점검 스크립트
 ├── linux_vuln_fix.sh                  # Linux 취약점 자동 조치 스크립트
-└── db_vuln_check.sh                   # MySQL/MariaDB 취약점 점검 스크립트
+├── db_vuln_check.sh                   # MySQL/MariaDB 취약점 점검 스크립트
+└── db_vuln_fix.sh                     # MySQL/MariaDB 취약점 자동 조치 스크립트
 ```
 
 ## 🔍 제공 스크립트
@@ -132,6 +133,60 @@ export MYSQL_PASSWORD="mypassword"
 
 ---
 
+### 4. MySQL/MariaDB 취약점 자동 조치 스크립트 (db_vuln_fix.sh)
+
+취약점 점검 결과를 바탕으로 자동으로 MySQL/MariaDB 보안 조치를 수행합니다.
+
+#### 사용법
+```bash
+# 기본 사용 (점검 후 자동 조치)
+./db_vuln_fix.sh -u root -p yourpassword
+
+# 기존 점검 결과 파일 사용
+./db_vuln_fix.sh -u root -p yourpassword -f hostname_261127_143022_mysql_result.txt
+
+# 환경 변수 사용
+export MYSQL_PASSWORD="mypassword"
+./db_vuln_fix.sh -u root
+
+# 원격 서버 조치
+./db_vuln_fix.sh -h db.example.com -u admin -p password
+```
+
+#### 옵션
+- `-h, --host HOST`: MySQL 호스트 (기본값: localhost)
+- `-P, --port PORT`: MySQL 포트 (기본값: 3306)
+- `-u, --user USER`: MySQL 사용자 (기본값: root)
+- `-p, --password PASS`: MySQL 패스워드
+- `-f, --file FILE`: 기존 점검 결과 파일 사용 (새로운 점검 생략)
+- `--help`: 도움말 표시
+
+#### 출력
+- 조치 결과 파일: `hostname_YYMMDD_hhmmss_mysql_fix_result.txt`
+- 백업 디렉토리: `/var/backup/mysql_security_fix_YYMMDD_hhmmss/`
+
+#### 주요 기능
+- **자동 조치**: FAIL 항목만 선택적으로 조치 수행
+- **상세 로깅**: 각 조치의 성공/실패 여부를 상세히 기록
+- **안전 모드**: 위험한 작업(계정 삭제, 권한 변경 등)은 수동 조치 권장
+
+#### 자동 조치 항목 예시
+- **MX-01**: Root 원격 접속 제거
+- **MX-02**: 익명 계정 삭제
+- **MX-05**: 패스워드 복잡도 정책 설정
+- **MX-08**: test 데이터베이스 제거
+- **MX-13**: Slow query log 활성화
+
+#### 수동 조치 필요 항목
+일부 항목은 my.cnf 설정 변경 및 재시작이 필요하거나 환경에 따라 신중한 검토가 필요합니다:
+- **MX-03, MX-04**: 계정 관리
+- **MX-06, MX-07**: 권한 최소화
+- **MX-09**: FILE 권한 검토
+- **MX-10, MX-11, MX-16**: my.cnf 설정 필요 (secure_file_priv, log_error, bind-address)
+- **MX-14**: MySQL/MariaDB 버전 업데이트
+
+---
+
 ## 🚀 실행 예시
 
 ### Linux 취약점 점검 및 조치
@@ -155,7 +210,7 @@ cat hostname_261127_143530_fix_result.txt
 sudo ./linux_vuln_check.sh
 ```
 
-### MySQL 취약점 점검
+### MySQL 취약점 점검 및 조치
 ```bash
 # 1. 점검 스크립트 실행
 ./db_vuln_check.sh -u root -p mypassword
@@ -165,6 +220,15 @@ cat hostname_261127_143530_mysql_result.txt
 
 # 3. 실패한 항목만 확인
 grep "FAIL" hostname_261127_143530_mysql_result.txt
+
+# 4. 자동 조치 수행 (점검 + 조치)
+./db_vuln_fix.sh -u root -p mypassword
+
+# 5. 조치 결과 확인
+cat hostname_261127_144530_mysql_fix_result.txt
+
+# 6. 조치 후 재점검
+./db_vuln_check.sh -u root -p mypassword
 ```
 
 ---
@@ -210,17 +274,33 @@ Detail: [Risk: HIGH] Root access is restricted to localhost
 
 ## ⚠️ 주의사항
 
-1. **백업 권장**: 점검 스크립트는 시스템을 변경하지 않지만, 조치 전 반드시 백업을 수행하세요.
+1. **백업 필수**: 조치 스크립트 실행 전 반드시 시스템 및 데이터베이스를 백업하세요.
+   - Linux: 중요 설정 파일은 자동으로 `/var/backup/security_fix_*/` 에 백업됩니다.
+   - MySQL: 데이터베이스 백업은 수동으로 수행하세요 (`mysqldump` 사용).
 
 2. **프로덕션 환경**: 운영 환경에서 실행 시 주의가 필요합니다. 먼저 테스트 환경에서 검증하세요.
+   - 일부 조치는 서비스 재시작이 필요합니다.
+   - 네트워크 설정 변경 시 원격 접속이 차단될 수 있습니다.
 
-3. **MySQL 접속 정보**: MySQL 점검 시 패스워드가 명령행에 노출될 수 있으므로, 환경 변수 사용을 권장합니다.
+3. **MySQL 접속 정보**: MySQL 점검 및 조치 시 패스워드가 명령행에 노출될 수 있으므로, 환경 변수 사용을 권장합니다.
    ```bash
    export MYSQL_PASSWORD="yourpassword"
    ./db_vuln_check.sh -u root
+   ./db_vuln_fix.sh -u root
    ```
 
-4. **결과 파일 관리**: 점검 결과 파일은 자동으로 `.gitignore`에 추가되어 Git에 커밋되지 않습니다.
+4. **결과 파일 관리**: 점검 및 조치 결과 파일은 자동으로 `.gitignore`에 추가되어 Git에 커밋되지 않습니다.
+
+5. **수동 조치 항목**: 일부 항목은 자동 조치가 불가능하거나 위험하여 수동 조치가 필요합니다.
+   - 조치 결과 파일에서 "Manual intervention required" 항목을 확인하세요.
+   - 특히 계정 삭제, 권한 변경, 설정 파일 수정은 신중하게 검토 후 수행하세요.
+
+6. **MySQL 재시작**: 일부 MySQL 설정은 my.cnf 수정 후 재시작이 필요합니다.
+   ```bash
+   sudo systemctl restart mysqld
+   # 또는
+   sudo systemctl restart mariadb
+   ```
 
 ---
 
