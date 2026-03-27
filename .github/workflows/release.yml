@@ -1,0 +1,141 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Extract version from tag
+        id: version
+        run: |
+          TAG=${GITHUB_REF#refs/tags/v}
+          echo "version=$TAG" >> $GITHUB_OUTPUT
+          echo "tag=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+
+      - name: Update version in scripts
+        run: |
+          VERSION=${{ steps.version.outputs.version }}
+
+          # 각 스크립트의 VERSION 변수 업데이트
+          sed -i "s/VERSION=\".*\"/VERSION=\"$VERSION\"/" linux_vuln_check.sh
+          sed -i "s/VERSION=\".*\"/VERSION=\"$VERSION\"/" linux_vuln_fix.sh
+          sed -i "s/VERSION=\".*\"/VERSION=\"$VERSION\"/" db_vuln_check.sh
+          sed -i "s/VERSION=\".*\"/VERSION=\"$VERSION\"/" db_vuln_fix.sh
+
+          # 각 스크립트 헤더의 버전 주석 업데이트
+          sed -i "s/# 버전: .*/# 버전: $VERSION/" linux_vuln_check.sh
+          sed -i "s/# 버전: .*/# 버전: $VERSION/" linux_vuln_fix.sh
+          sed -i "s/# 버전: .*/# 버전: $VERSION/" db_vuln_check.sh
+          sed -i "s/# 버전: .*/# 버전: $VERSION/" db_vuln_fix.sh
+
+          # README.md의 현재 버전 업데이트
+          sed -i "s/\*\*현재 버전: .*\*\*/\*\*현재 버전: $VERSION\*\*/" README.md
+
+      - name: Verify version update
+        run: |
+          VERSION=${{ steps.version.outputs.version }}
+
+          echo "📋 Verifying version updates..."
+          echo "Expected version: $VERSION"
+          echo ""
+
+          # 각 스크립트의 VERSION 변수 확인
+          for script in linux_vuln_check.sh linux_vuln_fix.sh db_vuln_check.sh db_vuln_fix.sh; do
+            SCRIPT_VERSION=$(grep '^VERSION=' $script | cut -d'"' -f2)
+            echo "✓ $script: VERSION=\"$SCRIPT_VERSION\""
+
+            if [ "$SCRIPT_VERSION" != "$VERSION" ]; then
+              echo "❌ ERROR: Version mismatch in $script!"
+              echo "   Expected: $VERSION"
+              echo "   Found: $SCRIPT_VERSION"
+              exit 1
+            fi
+          done
+
+          # README.md 버전 확인
+          README_VERSION=$(grep -oP '현재 버전: \K[0-9]+\.[0-9]+\.[0-9]+' README.md | head -1)
+          echo "✓ README.md: 현재 버전: $README_VERSION"
+
+          if [ "$README_VERSION" != "$VERSION" ]; then
+            echo "❌ ERROR: Version mismatch in README.md!"
+            echo "   Expected: $VERSION"
+            echo "   Found: $README_VERSION"
+            exit 1
+          fi
+
+          echo ""
+          echo "✅ All version updates verified successfully!"
+
+      - name: Create Linux scripts package
+        run: |
+          mkdir -p release/linux_vuln_scripts
+          cp linux_vuln_check.sh release/linux_vuln_scripts/
+          cp linux_vuln_fix.sh release/linux_vuln_scripts/
+          cp docs/linux_manual_fix_guide.md release/linux_vuln_scripts/
+          cp README.md release/linux_vuln_scripts/
+          cp LICENSE release/linux_vuln_scripts/
+
+          cd release
+          zip -r linux_vuln_scripts.zip linux_vuln_scripts/
+          cd ..
+
+      - name: Create DB scripts package
+        run: |
+          mkdir -p release/db_vuln_scripts
+          cp db_vuln_check.sh release/db_vuln_scripts/
+          cp db_vuln_fix.sh release/db_vuln_scripts/
+          cp docs/mysql_manual_fix_guide.md release/db_vuln_scripts/
+          cp README.md release/db_vuln_scripts/
+          cp LICENSE release/db_vuln_scripts/
+
+          cd release
+          zip -r db_vuln_scripts.zip db_vuln_scripts/
+          cd ..
+
+      - name: Extract release notes from CHANGELOG
+        id: changelog
+        run: |
+          VERSION=${{ steps.version.outputs.version }}
+
+          # CHANGELOG.md에서 해당 버전의 내용 추출
+          awk "/## \[v?$VERSION\]/,/^## \[/ { if (/^## \[v?$VERSION\]/) p=1; else if (/^## \[/) p=0; if (p && !/^## \[v?$VERSION\]/) print }" CHANGELOG.md > release_notes.md
+
+          # 릴리즈 노트가 비어있으면 기본 메시지 사용
+          if [ ! -s release_notes.md ]; then
+            echo "보안 취약점 점검 스크립트 v$VERSION 릴리즈" > release_notes.md
+            echo "" >> release_notes.md
+            echo "자세한 내용은 [CHANGELOG.md](CHANGELOG.md)를 참조하세요." >> release_notes.md
+          fi
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          name: Release ${{ steps.version.outputs.tag }}
+          body_path: release_notes.md
+          files: |
+            release/linux_vuln_scripts.zip
+            release/db_vuln_scripts.zip
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Update repository with version changes
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add linux_vuln_check.sh linux_vuln_fix.sh db_vuln_check.sh db_vuln_fix.sh README.md
+          git diff --staged --quiet || git commit -m "chore: update version to ${{ steps.version.outputs.version }} [skip ci]"
+          git push origin HEAD:main || echo "No changes to push or push failed"
