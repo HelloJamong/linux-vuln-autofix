@@ -36,6 +36,42 @@ SKIPPED_FIXES=0
 # 기본 함수들
 #===============================================================================
 
+# 운영체제 환경 확인
+check_os_environment() {
+    echo -e "${BLUE}Checking operating system environment...${NC}"
+
+    # /etc/os-release 파일 확인
+    if [ ! -f /etc/os-release ]; then
+        echo -e "${RED}[ERROR] /etc/os-release file not found.${NC}"
+        echo -e "${RED}[ERROR] This script is designed for RHEL or Rocky Linux 9.${NC}"
+        exit 1
+    fi
+
+    # OS 정보 읽기
+    source /etc/os-release
+
+    # OS ID 확인 (rhel 또는 rocky)
+    if [ "$ID" != "rhel" ] && [ "$ID" != "rocky" ]; then
+        echo -e "${RED}[ERROR] Unsupported operating system: $ID${NC}"
+        echo -e "${RED}[ERROR] This script is designed for RHEL or Rocky Linux 9.${NC}"
+        echo -e "${RED}Current OS: ${NAME:-Unknown}${NC}"
+        echo ""
+        exit 1
+    fi
+
+    # 버전 확인 (9.x)
+    local major_version=$(echo "$VERSION_ID" | cut -d. -f1)
+    if [ "$major_version" != "9" ]; then
+        echo -e "${RED}[ERROR] Unsupported OS version: $VERSION_ID${NC}"
+        echo -e "${RED}[ERROR] This script is designed for RHEL or Rocky Linux 9.${NC}"
+        echo -e "${RED}Current OS: ${PRETTY_NAME:-Unknown}${NC}"
+        echo ""
+        exit 1
+    fi
+
+    echo -e "${GREEN}Operating system check passed: ${PRETTY_NAME:-$NAME $VERSION_ID}${NC}"
+}
+
 # Root 권한 확인
 check_root() {
     if [ "$EUID" -ne 0 ]; then
@@ -1572,6 +1608,9 @@ main() {
 
     # Root 권한 확인
     check_root
+
+    # 운영체제 환경 확인
+    check_os_environment
 
     # 파라미터 파싱
     parse_args "$@"

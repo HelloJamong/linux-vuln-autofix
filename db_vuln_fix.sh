@@ -122,6 +122,53 @@ parse_args() {
     fi
 }
 
+# MySQL/MariaDB 환경 확인
+check_mysql_environment() {
+    echo -e "${BLUE}Checking MySQL/MariaDB environment...${NC}"
+
+    # MySQL/MariaDB 클라이언트 설치 확인
+    if ! command -v mysql &> /dev/null; then
+        echo -e "${RED}[ERROR] MySQL/MariaDB client is not installed.${NC}"
+        echo -e "${RED}[ERROR] This script requires MySQL or MariaDB to be installed.${NC}"
+        echo ""
+        echo "Please install MySQL or MariaDB:"
+        echo "  For RHEL/Rocky Linux:"
+        echo "    sudo dnf install mysql"
+        echo "    # or"
+        echo "    sudo dnf install mariadb"
+        echo ""
+        exit 1
+    fi
+
+    # MySQL/MariaDB 서버 실행 확인 (프로세스 또는 소켓 확인)
+    local mysql_running=false
+
+    # mysqld 또는 mariadbd 프로세스 확인
+    if pgrep -x mysqld &> /dev/null || pgrep -x mariadbd &> /dev/null; then
+        mysql_running=true
+    # MySQL/MariaDB 소켓 파일 확인
+    elif [ -S /var/lib/mysql/mysql.sock ] || [ -S /var/run/mysqld/mysqld.sock ] || [ -S /tmp/mysql.sock ]; then
+        mysql_running=true
+    # systemd 서비스 상태 확인
+    elif systemctl is-active --quiet mysqld 2>/dev/null || systemctl is-active --quiet mariadb 2>/dev/null; then
+        mysql_running=true
+    fi
+
+    if [ "$mysql_running" = false ]; then
+        echo -e "${RED}[ERROR] MySQL/MariaDB server is not running.${NC}"
+        echo -e "${RED}[ERROR] This script requires a running MySQL or MariaDB server.${NC}"
+        echo ""
+        echo "Please start MySQL or MariaDB service:"
+        echo "  sudo systemctl start mysqld"
+        echo "  # or"
+        echo "  sudo systemctl start mariadb"
+        echo ""
+        exit 1
+    fi
+
+    echo -e "${GREEN}MySQL/MariaDB environment check passed.${NC}"
+}
+
 # MySQL 연결 확인
 check_mysql_connection() {
     if ! command -v mysql &>/dev/null; then
@@ -512,6 +559,9 @@ main() {
 
     # 파라미터 파싱
     parse_args "$@"
+
+    # MySQL/MariaDB 환경 확인
+    check_mysql_environment
 
     # MySQL 연결 확인
     check_mysql_connection
