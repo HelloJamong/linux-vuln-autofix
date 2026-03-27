@@ -4,6 +4,10 @@
 # Vulnerability check script results
 *_result.txt
 *_mysql_result.txt
+*_fix_result.txt
+
+# Backup directories
+/var/backup/security_fix_*/
 
 # Temporary files
 *.tmp
