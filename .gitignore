@@ -1,0 +1,22 @@
+# OMC (oh-my-claudecode) files
+.omc/
+
+# Vulnerability check script results
+*_result.txt
+
+# Temporary files
+*.tmp
+*.log
+*.bak
+*.swp
+*.swo
+*~
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
