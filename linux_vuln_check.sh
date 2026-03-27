@@ -4,7 +4,12 @@
 #
 # 설명: 시스템의 보안 취약점을 점검하고 결과를 파일로 저장합니다.
 # 출력: hostname_YYMMDD_hhmmss_result.txt 형식의 결과 파일
+# 버전: 26.03.01
 #===============================================================================
+
+# 버전 정보
+VERSION="26.03.01"
+SCRIPT_NAME="Linux Vulnerability Check Script"
 
 # 색상 정의
 RED='\033[0;31m'
@@ -2643,6 +2648,20 @@ main() {
     echo "Result file: ${SCRIPT_DIR}/${RESULT_FILE}"
     echo "================================================================================"
 }
+
+# 버전 정보 출력
+show_version() {
+    echo "$SCRIPT_NAME v$VERSION"
+    echo "RHEL/Rocky Linux 9 Security Vulnerability Assessment"
+    echo ""
+    echo "For more information, see CHANGELOG.md"
+}
+
+# 명령행 인자 처리 (버전 체크)
+if [ "$1" = "--version" ] || [ "$1" = "-v" ]; then
+    show_version
+    exit 0
+fi
 
 # 스크립트 실행
 main "$@"

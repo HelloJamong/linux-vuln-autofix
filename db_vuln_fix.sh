@@ -5,7 +5,12 @@
 # 설명: MySQL/MariaDB 취약점 점검 결과를 바탕으로 자동으로 보안 조치를 수행합니다.
 # 사용법: ./db_vuln_fix.sh [OPTIONS]
 # 출력: hostname_YYMMDD_hhmmss_mysql_fix_result.txt 형식의 조치 결과 파일
+# 버전: 26.03.01
 #===============================================================================
+
+# 버전 정보
+VERSION="26.03.01"
+SCRIPT_NAME="MySQL/MariaDB Vulnerability Auto-Fix Script"
 
 # 색상 정의
 RED='\033[0;31m'
@@ -57,6 +62,7 @@ Options:
     -u, --user USER         MySQL user (default: root)
     -p, --password PASS     MySQL password
     -f, --file FILE         Use existing check result file (skip new check)
+    -v, --version           Show version information
     --help                  Display this help message
 
 Environment variables:
@@ -78,6 +84,15 @@ Examples:
     ./db_vuln_fix.sh -u root
 
 EOF
+    exit 0
+}
+
+# 버전 정보 출력
+show_version() {
+    echo "$SCRIPT_NAME v$VERSION"
+    echo "MySQL/MariaDB Security Vulnerability Auto-Remediation"
+    echo ""
+    echo "For more information, see CHANGELOG.md"
     exit 0
 }
 
@@ -104,6 +119,9 @@ parse_args() {
             -f|--file)
                 CHECK_RESULT_FILE="$2"
                 shift 2
+                ;;
+            -v|--version)
+                show_version
                 ;;
             --help)
                 usage
@@ -552,13 +570,13 @@ fix_mx16() {
 #===============================================================================
 
 main() {
+    # 파라미터 파싱 (--version, --help는 여기서 처리)
+    parse_args "$@"
+
     echo -e "${BLUE}================================================================================${NC}"
     echo -e "${BLUE}MySQL/MariaDB Security Vulnerability Auto-Remediation Script${NC}"
     echo -e "${BLUE}================================================================================${NC}"
     echo ""
-
-    # 파라미터 파싱
-    parse_args "$@"
 
     # MySQL/MariaDB 환경 확인
     check_mysql_environment

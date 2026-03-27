@@ -4,7 +4,12 @@
 #
 # 설명: MySQL/MariaDB의 보안 취약점을 점검하고 결과를 파일로 저장합니다.
 # 출력: hostname_YYMMDD_hhmmss_mysql_result.txt 형식의 결과 파일
+# 버전: 26.03.01
 #===============================================================================
+
+# 버전 정보
+VERSION="26.03.01"
+SCRIPT_NAME="MySQL/MariaDB Vulnerability Check Script"
 
 # 색상 정의
 RED='\033[0;31m'
@@ -39,6 +44,7 @@ usage() {
     echo "  -P, --port PORT       MySQL port (default: 3306)"
     echo "  -u, --user USER       MySQL user (default: root)"
     echo "  -p, --password PASS   MySQL password"
+    echo "  -v, --version         Show version information"
     echo "  --help                Show this help message"
     echo ""
     echo "Environment variables:"
@@ -48,6 +54,15 @@ usage() {
     echo "  $0 -u root -p mypassword"
     echo "  MYSQL_PASSWORD=mypass $0"
     exit 1
+}
+
+# 버전 정보 출력
+show_version() {
+    echo "$SCRIPT_NAME v$VERSION"
+    echo "MySQL/MariaDB Security Vulnerability Assessment"
+    echo ""
+    echo "For more information, see CHANGELOG.md"
+    exit 0
 }
 
 # 명령행 인자 파싱
@@ -69,6 +84,9 @@ parse_args() {
             -p|--password)
                 MYSQL_PASSWORD="$2"
                 shift 2
+                ;;
+            -v|--version)
+                show_version
                 ;;
             --help)
                 usage

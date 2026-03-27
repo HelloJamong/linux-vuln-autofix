@@ -2,11 +2,14 @@
 
 RHEL/Rocky Linux 9 및 MySQL/MariaDB의 보안 취약점을 점검하는 자동화 스크립트 모음입니다.
 
+**현재 버전: 26.03.01** | [변경 이력 보기](CHANGELOG.md)
+
 ## 📋 프로젝트 구조
 
 ```
 linux-vuln-autofix/
 ├── README.md                          # 프로젝트 설명 문서
+├── CHANGELOG.md                       # 버전별 변경 이력
 ├── LICENSE                            # MIT 라이선스
 ├── linux_vuln_check.sh                # Linux 취약점 점검 스크립트
 ├── linux_vuln_fix.sh                  # Linux 취약점 자동 조치 스크립트
@@ -16,6 +19,23 @@ linux-vuln-autofix/
     ├── linux_manual_fix_guide.md      # Linux 수동 조치 가이드
     └── mysql_manual_fix_guide.md      # MySQL 수동 조치 가이드
 ```
+
+## 🔖 버전 정보
+
+각 스크립트의 버전은 다음 명령어로 확인할 수 있습니다:
+
+```bash
+./linux_vuln_check.sh --version
+./linux_vuln_fix.sh --version
+./db_vuln_check.sh --version
+./db_vuln_fix.sh --version
+```
+
+**버전 관리 정책**:
+- 이 프로젝트는 [Calendar Versioning (CalVer)](https://calver.org/)을 따릅니다.
+  - 형식: **YY.MM.NN** (예: 26.03.01 = 2026년 3월 첫 번째 릴리스)
+- 모든 변경사항은 [CHANGELOG.md](CHANGELOG.md)에 기록됩니다.
+- 최신 보안 취약점 대응을 위해 정기적으로 업데이트됩니다.
 
 ## 🔍 제공 스크립트
 

@@ -5,7 +5,12 @@
 # 설명: 취약점 점검 결과를 바탕으로 자동으로 보안 조치를 수행합니다.
 # 사용법: sudo ./linux_vuln_fix.sh [check_result_file]
 # 출력: hostname_YYMMDD_hhmmss_fix_result.txt 형식의 조치 결과 파일
+# 버전: 26.03.01
 #===============================================================================
+
+# 버전 정보
+VERSION="26.03.01"
+SCRIPT_NAME="Linux Vulnerability Auto-Fix Script"
 
 # 색상 정의
 RED='\033[0;31m'
@@ -88,6 +93,7 @@ Usage: $0 [OPTIONS]
 Options:
     -f, --file FILE     Use existing check result file (skip new check)
     -h, --help          Display this help message
+    -v, --version       Show version information
 
 Description:
     This script automatically remediates security vulnerabilities based on
@@ -104,6 +110,15 @@ EOF
     exit 0
 }
 
+# 버전 정보 출력
+show_version() {
+    echo "$SCRIPT_NAME v$VERSION"
+    echo "RHEL/Rocky Linux 9 Security Vulnerability Auto-Remediation"
+    echo ""
+    echo "For more information, see CHANGELOG.md"
+    exit 0
+}
+
 # 파라미터 파싱
 parse_args() {
     while [[ $# -gt 0 ]]; do
@@ -114,6 +129,9 @@ parse_args() {
                 ;;
             -h|--help)
                 usage
+                ;;
+            -v|--version)
+                show_version
                 ;;
             *)
                 echo -e "${RED}Unknown option: $1${NC}"
@@ -1601,6 +1619,9 @@ fix_u72() {
 #===============================================================================
 
 main() {
+    # 파라미터 파싱 (--version, --help는 여기서 처리)
+    parse_args "$@"
+
     echo -e "${BLUE}================================================================================${NC}"
     echo -e "${BLUE}RHEL/Rocky Linux 9 Security Vulnerability Auto-Remediation Script${NC}"
     echo -e "${BLUE}================================================================================${NC}"
@@ -1611,9 +1632,6 @@ main() {
 
     # 운영체제 환경 확인
     check_os_environment
-
-    # 파라미터 파싱
-    parse_args "$@"
 
     # 백업 디렉토리 생성
     create_backup_dir
