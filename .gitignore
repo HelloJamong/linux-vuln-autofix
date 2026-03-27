@@ -3,6 +3,7 @@
 
 # Vulnerability check script results
 *_result.txt
+*_mysql_result.txt
 
 # Temporary files
 *.tmp
