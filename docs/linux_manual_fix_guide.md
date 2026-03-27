@@ -1126,6 +1126,220 @@ grep apache /etc/passwd
 
 ---
 
+## U-73: OpenSSL CVE-2025-11187 보안 패치
+
+### 취약점 설명
+CVE-2025-11187은 OpenSSL의 중요 보안 취약점입니다. Rocky Linux는 백포트(backport) 정책을 사용하므로, 패키지 버전 번호만으로는 패치 여부를 확인할 수 없습니다. RPM 패키지의 changelog를 통해 CVE 패치 적용 여부를 확인해야 합니다.
+
+**위험도**: HIGH (상)
+
+### 점검 방법
+```bash
+# 현재 설치된 openssl 버전 확인
+rpm -q openssl
+
+# OpenSSL 패키지의 changelog에서 CVE-2025-11187 패치 확인
+rpm -q --changelog openssl | grep -i "CVE-2025-11187"
+
+# 사용 가능한 보안 업데이트 확인
+yum check-update --security openssl
+
+# 또는 dnf 사용
+dnf check-update --security openssl
+
+# 상세한 보안 공지 확인
+yum updateinfo list security | grep openssl
+```
+
+### 조치 방법
+
+#### 1단계: 백업
+```bash
+# OpenSSL 설정 백업
+sudo cp -a /etc/pki /etc/pki.backup.$(date +%Y%m%d)
+
+# 현재 버전 기록
+rpm -q openssl > /root/openssl_version_before_update.txt
+```
+
+#### 2단계: 보안 업데이트 적용
+```bash
+# 보안 업데이트만 적용
+sudo yum update --security openssl
+
+# 또는 전체 openssl 업데이트
+sudo yum update openssl
+
+# dnf 사용 시
+sudo dnf update --security openssl
+```
+
+#### 3단계: OpenSSL을 사용하는 서비스 재시작
+```bash
+# httpd (Apache) 재시작
+sudo systemctl restart httpd
+
+# nginx 재시작
+sudo systemctl restart nginx
+
+# postfix 재시작
+sudo systemctl restart postfix
+
+# sshd 재시작 (주의: 원격 접속 시 새 세션 열어두고 작업)
+sudo systemctl restart sshd
+
+# 모든 OpenSSL 관련 서비스 확인
+sudo lsof | grep libssl
+```
+
+### 주의사항
+- **프로덕션 환경에서는 반드시 유지보수 시간에 작업하세요.**
+- sshd 재시작 시 기존 SSH 세션은 유지되지만, 새 세션을 먼저 열어두고 작업하세요.
+- 웹 서버 재시작 시 잠시 서비스가 중단됩니다.
+- 업데이트 후 시스템 재부팅을 권장합니다 (커널 업데이트가 함께 포함될 수 있음).
+
+### 검증
+```bash
+# 업데이트 후 버전 확인
+rpm -q openssl
+
+# CVE 패치 적용 확인
+rpm -q --changelog openssl | head -20
+
+# OpenSSL 버전 및 빌드 정보
+openssl version -a
+
+# 업데이트 이력 확인
+yum history list openssl
+
+# 서비스 정상 동작 확인
+sudo systemctl status httpd
+sudo systemctl status nginx
+sudo systemctl status sshd
+```
+
+### 예시
+```bash
+# 1. 현재 상태 확인
+$ rpm -q openssl
+openssl-3.0.7-16.el9_2
+
+# 2. CVE 패치 확인 (패치 전 - 출력 없음)
+$ rpm -q --changelog openssl | grep -i "CVE-2025-11187"
+(출력 없음)
+
+# 3. 보안 업데이트 적용
+$ sudo yum update --security openssl
+Updated:
+  openssl-3.0.7-27.el9_3
+
+# 4. CVE 패치 확인 (패치 후 - 출력 있음)
+$ rpm -q --changelog openssl | grep -i "CVE-2025-11187"
+- fix CVE-2025-11187 - Security vulnerability
+
+# 5. 서비스 재시작
+$ sudo systemctl restart httpd nginx
+```
+
+### Rocky Linux 백포트 정책
+Rocky Linux는 RHEL과 마찬가지로 **백포트 보안 패치** 정책을 따릅니다:
+- 버전 번호는 변경되지 않지만 보안 패치는 적용됨
+- 예: `openssl-3.0.7-16` → `openssl-3.0.7-27` (메이저 버전 동일, 릴리스 번호만 증가)
+- RPM changelog 또는 `yum updateinfo`로 CVE 패치 여부 확인 필요
+
+---
+
+## U-74: OpenSSL CVE-2025-15467 보안 패치
+
+### 취약점 설명
+CVE-2025-15467은 OpenSSL의 또 다른 중요 보안 취약점입니다. U-73과 마찬가지로 Rocky Linux의 백포트 정책으로 인해 패키지 버전만으로는 패치 여부를 확인할 수 없으며, RPM changelog를 통한 확인이 필요합니다.
+
+**위험도**: HIGH (상)
+
+### 점검 방법
+```bash
+# 현재 설치된 openssl 버전 확인
+rpm -q openssl
+
+# OpenSSL 패키지의 changelog에서 CVE-2025-15467 패치 확인
+rpm -q --changelog openssl | grep -i "CVE-2025-15467"
+
+# 사용 가능한 보안 업데이트 확인
+yum check-update --security openssl
+
+# 상세한 CVE 정보 확인
+yum updateinfo info --security openssl
+```
+
+### 조치 방법
+
+#### U-73과 동일한 OpenSSL 업데이트로 해결
+CVE-2025-11187과 CVE-2025-15467은 동일한 OpenSSL 보안 업데이트에 포함되어 있을 가능성이 높습니다.
+
+```bash
+# U-73 조치를 수행하면 U-74도 함께 해결됨
+sudo yum update --security openssl
+
+# 두 CVE 모두 패치되었는지 확인
+rpm -q --changelog openssl | grep -E "CVE-2025-11187|CVE-2025-15467"
+```
+
+#### 개별 확인이 필요한 경우
+```bash
+# CVE-2025-15467만 별도로 확인
+rpm -q --changelog openssl | grep -i "CVE-2025-15467"
+
+# Rocky Linux 보안 공지 확인
+# https://errata.rockylinux.org/
+```
+
+### 주의사항
+- U-73과 동일한 주의사항 적용
+- 두 CVE는 보통 동일한 업데이트에 포함됨
+- 하나의 보안 업데이트로 여러 CVE가 동시에 패치될 수 있음
+
+### 검증
+```bash
+# 두 CVE 모두 패치 확인
+rpm -q --changelog openssl | head -30 | grep -E "CVE-2025-11187|CVE-2025-15467"
+
+# 또는 더 상세한 확인
+for cve in CVE-2025-11187 CVE-2025-15467; do
+    echo "Checking $cve..."
+    rpm -q --changelog openssl | grep -i "$cve" || echo "$cve: Not found in changelog"
+done
+```
+
+### 예시
+```bash
+# 통합 보안 업데이트 시나리오
+$ sudo yum update --security openssl
+Updated:
+  openssl-3.0.7-27.el9_3
+
+# 두 CVE 모두 확인
+$ rpm -q --changelog openssl | head -30
+* Wed Jan 15 2025 Sahana Prasad <sahana@redhat.com> - 3.0.7-27
+- fix CVE-2025-11187 - Security vulnerability
+- fix CVE-2025-15467 - Security vulnerability
+- Resolves: RHEL-12345, RHEL-12346
+```
+
+### 보안 공지 확인 방법
+```bash
+# Red Hat/Rocky Linux 보안 공지 확인
+yum updateinfo list security
+
+# 특정 CVE 정보
+yum updateinfo info CVE-2025-15467
+
+# 또는 웹에서 확인
+# Rocky Linux: https://errata.rockylinux.org/
+# Red Hat: https://access.redhat.com/security/security-updates/
+```
+
+---
+
 ## 부록: 유용한 명령어 모음
 
 ### 계정 관리

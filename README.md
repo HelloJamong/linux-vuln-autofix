@@ -44,7 +44,7 @@ linux-vuln-autofix/
 
 ### 1. Linux 취약점 점검 스크립트 (linux_vuln_check.sh)
 
-KISA 기준 Linux 보안 취약점(U-01 ~ U-72)을 점검합니다.
+KISA 기준 Linux 보안 취약점(U-01 ~ U-74)을 점검합니다.
 
 #### 사용법
 ```bash
@@ -54,7 +54,7 @@ sudo ./linux_vuln_check.sh
 #### 출력
 - 결과 파일: `hostname_YYMMDD_hhmmss_result.txt`
 
-#### 점검 항목 (총 72개)
+#### 점검 항목 (총 74개)
 - **계정 관리** (U-01 ~ U-05): root 원격 접속, 패스워드 정책, 계정 잠금 등
 - **파일 및 디렉토리 관리** (U-06 ~ U-15): 권한, 소유자, SUID/SGID 등
 - **서비스 관리** (U-16 ~ U-42): 불필요한 서비스, 네트워크 보안, 웹 서비스 등
@@ -119,6 +119,7 @@ sudo ./linux_vuln_fix.sh -f hostname_261127_143022_result.txt
 - **U-18, U-25**: 네트워크 접근 제어
 - **U-43**: 보안 패치 적용
 - **U-53 ~ U-57**: 계정 및 그룹 관리
+- **U-73, U-74**: OpenSSL CVE 보안 패치 (CVE-2025-11187, CVE-2025-15467)
 
 **📖 상세 가이드**: [Linux 수동 조치 가이드](docs/linux_manual_fix_guide.md)
 

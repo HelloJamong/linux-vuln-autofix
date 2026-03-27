@@ -7,6 +7,26 @@
 
 ## [Unreleased]
 
+## [v26.03.02] - 2026-03-27
+
+### Added
+- **Linux 취약점 점검 스크립트** (`linux_vuln_check.sh`)
+  - U-73: OpenSSL CVE-2025-11187 보안 패치 점검
+  - U-74: OpenSSL CVE-2025-15467 보안 패치 점검
+  - Rocky Linux 백포트 정책을 고려한 RPM changelog 기반 CVE 패치 확인
+
+- **수동 조치 가이드** (`docs/linux_manual_fix_guide.md`)
+  - U-73 OpenSSL CVE-2025-11187 수동 조치 가이드 추가
+  - U-74 OpenSSL CVE-2025-15467 수동 조치 가이드 추가
+  - Rocky Linux 백포트 정책 설명 및 패치 확인 방법
+  - OpenSSL 업데이트 후 서비스 재시작 절차
+
+### Security
+- **OpenSSL 보안 취약점 대응** (총 74개 항목으로 확대)
+  - CVE-2025-11187: OpenSSL 보안 취약점 점검 및 조치
+  - CVE-2025-15467: OpenSSL 보안 취약점 점검 및 조치
+  - 백포트 환경에서의 보안 패치 검증 방법 제공
+
 ## [v26.03.01] - 2026-03-27
 
 ### Added
@@ -120,5 +140,6 @@
 - 각 버전의 릴리스 날짜는 YYYY-MM-DD 형식으로 표시됩니다.
 - 최신 버전이 항상 파일 상단에 위치합니다.
 
-[Unreleased]: https://github.com/yourusername/linux-vuln-autofix/compare/v26.03.01...HEAD
-[26.03.01]: https://github.com/yourusername/linux-vuln-autofix/releases/tag/v26.03.01
+[Unreleased]: https://github.com/yourusername/linux-vuln-autofix/compare/v26.03.02...HEAD
+[v26.03.02]: https://github.com/yourusername/linux-vuln-autofix/compare/v26.03.01...v26.03.02
+[v26.03.01]: https://github.com/yourusername/linux-vuln-autofix/releases/tag/v26.03.01

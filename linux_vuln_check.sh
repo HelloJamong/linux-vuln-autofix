@@ -2540,6 +2540,72 @@ check_u72() {
     fi
 }
 
+# U-73: OpenSSL CVE-2025-11187 Vulnerability Check
+check_u73() {
+    local check_id="U-73"
+    local check_name="OpenSSL CVE-2025-11187 Security Patch"
+    local risk_level="HIGH"
+
+    # openssl 패키지 설치 확인
+    if ! rpm -q openssl &>/dev/null; then
+        log_result "$check_id" "$check_name" "N/A" "[Risk: ${risk_level}] OpenSSL package is not installed"
+        return
+    fi
+
+    # 현재 설치된 openssl 버전
+    local openssl_version=$(rpm -q openssl)
+
+    # Rocky Linux는 백포트를 사용하므로 RPM changelog에서 CVE 패치 여부 확인
+    local cve_patched=false
+    if rpm -q --changelog openssl 2>/dev/null | grep -qi "CVE-2025-11187"; then
+        cve_patched=true
+    fi
+
+    # yum/dnf를 통한 보안 업데이트 확인
+    local security_updates=$(yum check-update --security openssl 2>/dev/null | grep -c "openssl" || echo "0")
+
+    if [ "$cve_patched" == true ]; then
+        log_result "$check_id" "$check_name" "PASS" "[Risk: ${risk_level}] CVE-2025-11187 patch is applied ($openssl_version)"
+    elif [ "$security_updates" -gt 0 ]; then
+        log_result "$check_id" "$check_name" "FAIL" "[Risk: ${risk_level}] Security updates available for OpenSSL. Manual update required ($openssl_version)"
+    else
+        log_result "$check_id" "$check_name" "FAIL" "[Risk: ${risk_level}] Cannot verify CVE-2025-11187 patch status. Manual verification required ($openssl_version)"
+    fi
+}
+
+# U-74: OpenSSL CVE-2025-15467 Vulnerability Check
+check_u74() {
+    local check_id="U-74"
+    local check_name="OpenSSL CVE-2025-15467 Security Patch"
+    local risk_level="HIGH"
+
+    # openssl 패키지 설치 확인
+    if ! rpm -q openssl &>/dev/null; then
+        log_result "$check_id" "$check_name" "N/A" "[Risk: ${risk_level}] OpenSSL package is not installed"
+        return
+    fi
+
+    # 현재 설치된 openssl 버전
+    local openssl_version=$(rpm -q openssl)
+
+    # Rocky Linux는 백포트를 사용하므로 RPM changelog에서 CVE 패치 여부 확인
+    local cve_patched=false
+    if rpm -q --changelog openssl 2>/dev/null | grep -qi "CVE-2025-15467"; then
+        cve_patched=true
+    fi
+
+    # yum/dnf를 통한 보안 업데이트 확인
+    local security_updates=$(yum check-update --security openssl 2>/dev/null | grep -c "openssl" || echo "0")
+
+    if [ "$cve_patched" == true ]; then
+        log_result "$check_id" "$check_name" "PASS" "[Risk: ${risk_level}] CVE-2025-15467 patch is applied ($openssl_version)"
+    elif [ "$security_updates" -gt 0 ]; then
+        log_result "$check_id" "$check_name" "FAIL" "[Risk: ${risk_level}] Security updates available for OpenSSL. Manual update required ($openssl_version)"
+    else
+        log_result "$check_id" "$check_name" "FAIL" "[Risk: ${risk_level}] Cannot verify CVE-2025-15467 patch status. Manual verification required ($openssl_version)"
+    fi
+}
+
 #===============================================================================
 # 메인 실행
 #===============================================================================
@@ -2635,6 +2701,8 @@ main() {
     check_u70
     check_u71
     check_u72
+    check_u73
+    check_u74
 
     # 결과 요약
     echo "" >> "$RESULT_FILE"
