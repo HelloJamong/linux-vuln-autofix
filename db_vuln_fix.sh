@@ -5,11 +5,11 @@
 # 설명: MySQL/MariaDB 취약점 점검 결과를 바탕으로 자동으로 보안 조치를 수행합니다.
 # 사용법: ./db_vuln_fix.sh [OPTIONS]
 # 출력: hostname_YYMMDD_hhmmss_mysql_fix_result.txt 형식의 조치 결과 파일
-# 버전: 26.03.01
+# 버전: 26.05.01
 #===============================================================================
 
 # 버전 정보
-VERSION="26.03.01"
+VERSION="26.05.01"
 SCRIPT_NAME="MySQL/MariaDB Vulnerability Auto-Fix Script"
 
 # 색상 정의
@@ -566,6 +566,91 @@ fix_mx16() {
 }
 
 #===============================================================================
+# Latest 2026 KISA DBMS remediation layer for MySQL/MariaDB (D-* codes)
+#===============================================================================
+
+d_status_for() {
+    local id="$1"
+    [ -n "$CHECK_RESULT_FILE" ] && [ -f "$CHECK_RESULT_FILE" ] || return 1
+    grep -A 2 "^\[${id}\]" "$CHECK_RESULT_FILE" | grep -m1 '^Status:' | sed 's/^Status: //'
+}
+
+d_is_failed() {
+    local id="$1"; shift
+    local status
+    status=$(d_status_for "$id")
+    [ "$status" = "FAIL" ] && return 0
+    for id in "$@"; do
+        status=$(d_status_for "$id")
+        [ "$status" = "FAIL" ] && return 0
+    done
+    return 1
+}
+
+d_manual_fix() {
+    local id="$1"
+    local name="$2"
+    local message="$3"
+    shift 3
+    if ! d_is_failed "$id" "$@"; then
+        log_fix_result "$id" "$name" "SKIPPED" "Already passed or N/A"
+        return
+    fi
+    log_fix_result "$id" "$name" "FAILED" "Manual intervention required. ${message}"
+}
+
+fix_d01() {
+    local id="D-01" name="기본 계정의 비밀번호, 정책 등을 변경하여 사용"
+    d_manual_fix "$id" "$name" "Change default/root account passwords and lock unused default accounts." "MX-03"
+}
+
+fix_d02() {
+    local id="D-02" name="데이터베이스의 불필요 계정을 제거하거나, 잠금설정 후 사용"
+    if ! d_is_failed "$id" "MX-02" "MX-07" "MX-08"; then
+        log_fix_result "$id" "$name" "SKIPPED" "Already passed or N/A"
+        return
+    fi
+    local result1 result2 rc=0
+    result1=$(execute_query "DELETE FROM mysql.user WHERE user='';" 2>&1) || rc=1
+    result2=$(execute_query "DROP DATABASE IF EXISTS test;" 2>&1) || rc=1
+    execute_query "FLUSH PRIVILEGES;" >/dev/null 2>&1
+    if [ $rc -eq 0 ]; then
+        log_fix_result "$id" "$name" "SUCCESS" "Anonymous accounts and test database removed where present"
+    else
+        log_fix_result "$id" "$name" "FAILED" "Failed to remove all unnecessary default objects: ${result1} ${result2}"
+    fi
+}
+
+fix_d03() {
+    local id="D-03" name="비밀번호 사용 기간 및 복잡도를 기관의 정책에 맞도록 설정"
+    if ! d_is_failed "$id" "MX-04"; then
+        log_fix_result "$id" "$name" "SKIPPED" "Already passed or N/A"
+        return
+    fi
+    execute_query "INSTALL COMPONENT 'file://component_validate_password';" >/dev/null 2>&1 || true
+    execute_query "INSTALL PLUGIN validate_password SONAME 'validate_password.so';" >/dev/null 2>&1 || true
+    execute_query "SET GLOBAL validate_password.length = 8;" >/dev/null 2>&1 || true
+    execute_query "SET GLOBAL validate_password.mixed_case_count = 1;" >/dev/null 2>&1 || true
+    execute_query "SET GLOBAL validate_password.number_count = 1;" >/dev/null 2>&1 || true
+    execute_query "SET GLOBAL validate_password.special_char_count = 1;" >/dev/null 2>&1 || true
+    execute_query "SET GLOBAL validate_password.policy = MEDIUM;" >/dev/null 2>&1 || true
+    execute_query "SET GLOBAL default_password_lifetime = 90;" >/dev/null 2>&1 || true
+    execute_query "SET GLOBAL simple_password_check_minimal_length = 8;" >/dev/null 2>&1 || true
+    log_fix_result "$id" "$name" "SUCCESS" "Password complexity/lifetime settings attempted; persist equivalent settings in my.cnf/my.ini if required"
+}
+
+fix_d04() { d_manual_fix "D-04" "데이터베이스 관리자 권한을 꼭 필요한 계정 및 그룹에 대해서만 허용" "Review accounts with SUPER/GRANT/global admin privileges and revoke unnecessary privileges." "MX-05"; }
+fix_d06() { d_manual_fix "D-06" "DB 사용자 계정을 개별적으로 부여하여 사용" "Replace shared DB accounts with named user/application accounts and least-privilege grants."; }
+fix_d07() { d_manual_fix "D-07" "root 권한으로 서비스 구동 제한" "Configure mysqld/mariadbd service to run as the mysql/mariadb OS account, not root."; }
+fix_d08() { d_manual_fix "D-08" "안전한 암호화 알고리즘 사용" "Migrate weak authentication plugins/hashes to current secure MySQL/MariaDB authentication methods."; }
+fix_d10() { d_manual_fix "D-10" "원격에서 DB 서버로의 접속 제한" "Restrict root/wildcard hosts and bind-address to approved interfaces/IPs; avoid disrupting application connectivity." "MX-01" "MX-06" "MX-15" "MX-16"; }
+fix_d11() { d_manual_fix "D-11" "DBA 이외의 인가되지 않은 사용자가 시스템 테이블에 접근할 수 없도록 설정" "Review broad/global SELECT and system schema access; grant only required database/table privileges." "MX-05"; }
+fix_d14() { d_manual_fix "D-14" "데이터베이스의 주요 설정 파일, 비밀번호 파일 등과 같은 주요 파일들의 접근 권한이 적절하게 설정" "Set my.cnf/my.ini and credential files to restricted owner/mode such as root/mysql with 600 or 640 as appropriate." "MX-09" "MX-10"; }
+fix_d21() { d_manual_fix "D-21" "인가되지 않은 GRANT OPTION 사용 제한" "Revoke unauthorized GRANT OPTION and re-grant privileges through approved roles/accounts only."; }
+fix_d25() { d_manual_fix "D-25" "주기적 보안 패치 및 벤더 권고 사항 적용" "Upgrade MySQL/MariaDB to a vendor-supported version with current security patches." "MX-14"; }
+
+
+#===============================================================================
 # 메인 실행 로직
 #===============================================================================
 
@@ -620,23 +705,19 @@ main() {
     echo -e "${BLUE}[INFO] Starting vulnerability remediation...${NC}"
     echo ""
 
-    # 모든 조치 함수 실행
-    fix_mx01
-    fix_mx02
-    fix_mx03
-    fix_mx04
-    fix_mx05
-    fix_mx06
-    fix_mx07
-    fix_mx08
-    fix_mx09
-    fix_mx10
-    fix_mx11
-    fix_mx12
-    fix_mx13
-    fix_mx14
-    fix_mx15
-    fix_mx16
+    # 최신 2026 DBMS 기준 MySQL/MariaDB 조치 실행 (D-* codes)
+    fix_d01
+    fix_d02
+    fix_d03
+    fix_d04
+    fix_d06
+    fix_d07
+    fix_d08
+    fix_d10
+    fix_d11
+    fix_d14
+    fix_d21
+    fix_d25
 
     # 최종 통계 출력
     echo ""

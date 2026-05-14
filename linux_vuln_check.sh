@@ -4,11 +4,11 @@
 #
 # 설명: 시스템의 보안 취약점을 점검하고 결과를 파일로 저장합니다.
 # 출력: hostname_YYMMDD_hhmmss_result.txt 형식의 결과 파일
-# 버전: 26.03.01
+# 버전: 26.05.01
 #===============================================================================
 
 # 버전 정보
-VERSION="26.03.01"
+VERSION="26.05.01"
 SCRIPT_NAME="Linux Vulnerability Check Script"
 
 # 색상 정의
@@ -2607,6 +2607,292 @@ check_u74() {
 }
 
 #===============================================================================
+# Latest 2026 KISA UNIX/Linux mapping layer (U-01 ~ U-67)
+#===============================================================================
+
+latest_run_legacy_check() {
+    local new_id="$1"
+    local new_name="$2"
+    local legacy_func="$3"
+    local tmp_file
+    tmp_file=$(mktemp)
+
+    ( RESULT_FILE="$tmp_file"; "$legacy_func" ) >/dev/null 2>&1
+
+    local status detail
+    status=$(grep -m1 '^Status:' "$tmp_file" | sed 's/^Status: //')
+    detail=$(grep -m1 '^Detail:' "$tmp_file" | sed 's/^Detail: //')
+    rm -f "$tmp_file"
+
+    [ -z "$status" ] && status="N/A"
+    [ -z "$detail" ] && detail="Legacy check ${legacy_func} produced no parseable result"
+    log_result "$new_id" "$new_name" "$status" "$detail"
+}
+
+latest_check_u13() {
+    local check_id="U-13"
+    local check_name="안전한 비밀번호 암호화 알고리즘 사용"
+    local risk_level="MEDIUM"
+    local method=""
+
+    if [ -f /etc/login.defs ]; then
+        method=$(grep -E '^[[:space:]]*ENCRYPT_METHOD[[:space:]]+' /etc/login.defs | tail -1 | awk '{print toupper($2)}')
+    fi
+
+    if [[ "$method" =~ ^(SHA512|SHA256|YESCRYPT)$ ]]; then
+        log_result "$check_id" "$check_name" "PASS" "[Risk: ${risk_level}] ENCRYPT_METHOD is ${method}"
+    elif awk -F: '($2 ~ /^\$5\$/ || $2 ~ /^\$6\$/ || $2 ~ /^\$y\$/) {found=1} END {exit found?0:1}' /etc/shadow 2>/dev/null; then
+        log_result "$check_id" "$check_name" "PASS" "[Risk: ${risk_level}] Existing password hashes use SHA-256/SHA-512/yescrypt style algorithms"
+    else
+        log_result "$check_id" "$check_name" "FAIL" "[Risk: ${risk_level}] Safe password hash algorithm not verified (ENCRYPT_METHOD=${method:-not set})"
+    fi
+}
+
+latest_check_u17() {
+    local check_id="U-17"
+    local check_name="시스템 시작 스크립트 권한 설정"
+    local risk_level="HIGH"
+    local dirs=(/etc/rc.d/init.d /etc/init.d)
+    local found=false bad=""
+
+    for dir in "${dirs[@]}"; do
+        [ -d "$dir" ] || continue
+        found=true
+        local issues
+        issues=$(find "$dir" -xdev \( ! -user root -o -perm /022 \) -print 2>/dev/null | head -20)
+        [ -n "$issues" ] && bad="${bad}${issues} "
+    done
+
+    if [ "$found" = false ]; then
+        log_result "$check_id" "$check_name" "N/A" "[Risk: ${risk_level}] Legacy init script directories not found"
+    elif [ -z "$bad" ]; then
+        log_result "$check_id" "$check_name" "PASS" "[Risk: ${risk_level}] Startup script ownership and permissions are acceptable"
+    else
+        log_result "$check_id" "$check_name" "FAIL" "[Risk: ${risk_level}] Startup scripts with unsafe owner/permissions found: ${bad}"
+    fi
+}
+
+latest_check_u51() {
+    local check_id="U-51"
+    local check_name="DNS 서비스의 취약한 동적 업데이트 설정 금지"
+    local risk_level="MEDIUM"
+    local conf="/etc/named.conf"
+
+    if ! systemctl is-active --quiet named 2>/dev/null && ! pgrep -x named >/dev/null 2>&1; then
+        log_result "$check_id" "$check_name" "N/A" "[Risk: ${risk_level}] DNS service is not running"
+        return
+    fi
+    if [ ! -f "$conf" ]; then
+        log_result "$check_id" "$check_name" "FAIL" "[Risk: ${risk_level}] named is running but ${conf} was not found"
+        return
+    fi
+    if grep -Eiq 'allow-update[[:space:]]*\{[[:space:]]*(any|0\.0\.0\.0/0)' "$conf"; then
+        log_result "$check_id" "$check_name" "FAIL" "[Risk: ${risk_level}] DNS dynamic update appears broadly allowed"
+    elif grep -Eiq 'allow-update[[:space:]]*\{[[:space:]]*none[[:space:]]*;' "$conf" || ! grep -Eiq 'allow-update' "$conf"; then
+        log_result "$check_id" "$check_name" "PASS" "[Risk: ${risk_level}] Insecure DNS dynamic update setting not found"
+    else
+        log_result "$check_id" "$check_name" "N/A" "[Risk: ${risk_level}] allow-update requires manual review"
+    fi
+}
+
+latest_check_u52() {
+    local check_id="U-52"
+    local check_name="Telnet 서비스 비활성화"
+    local risk_level="MEDIUM"
+
+    if systemctl is-active --quiet telnet.socket 2>/dev/null || systemctl is-active --quiet telnet 2>/dev/null || pgrep -x in.telnetd >/dev/null 2>&1; then
+        log_result "$check_id" "$check_name" "FAIL" "[Risk: ${risk_level}] Telnet service appears active"
+    else
+        log_result "$check_id" "$check_name" "PASS" "[Risk: ${risk_level}] Telnet service is not active"
+    fi
+}
+
+latest_check_u53() {
+    local check_id="U-53"
+    local check_name="FTP 서비스 정보 노출 제한"
+    local risk_level="LOW"
+
+    if ! systemctl is-active --quiet vsftpd 2>/dev/null && ! systemctl is-active --quiet proftpd 2>/dev/null && ! pgrep -E 'vsftpd|proftpd|pure-ftpd' >/dev/null 2>&1; then
+        log_result "$check_id" "$check_name" "N/A" "[Risk: ${risk_level}] FTP service is not running"
+        return
+    fi
+    if grep -RiqE 'ftpd_banner|ServerIdent[[:space:]]+off|DisplayLogin' /etc/vsftpd* /etc/proftpd* 2>/dev/null; then
+        log_result "$check_id" "$check_name" "PASS" "[Risk: ${risk_level}] FTP banner/information exposure control setting found"
+    else
+        log_result "$check_id" "$check_name" "FAIL" "[Risk: ${risk_level}] FTP information exposure control setting not verified"
+    fi
+}
+
+latest_check_u56() {
+    local check_id="U-56"
+    local check_name="FTP 서비스 접근 제어 설정"
+    local risk_level="LOW"
+
+    if ! systemctl is-active --quiet vsftpd 2>/dev/null && ! systemctl is-active --quiet proftpd 2>/dev/null && ! pgrep -E 'vsftpd|proftpd|pure-ftpd' >/dev/null 2>&1; then
+        log_result "$check_id" "$check_name" "N/A" "[Risk: ${risk_level}] FTP service is not running"
+        return
+    fi
+    if grep -RiqE 'tcp_wrappers=YES|userlist_enable=YES|<Limit|Allow(User|Group)|Deny(User|Group)' /etc/vsftpd* /etc/proftpd* 2>/dev/null; then
+        log_result "$check_id" "$check_name" "PASS" "[Risk: ${risk_level}] FTP access-control setting found"
+    else
+        log_result "$check_id" "$check_name" "FAIL" "[Risk: ${risk_level}] FTP access-control setting not verified"
+    fi
+}
+
+latest_check_u59() {
+    local check_id="U-59"
+    local check_name="안전한 SNMP 버전 사용"
+    local risk_level="HIGH"
+    local conf="/etc/snmp/snmpd.conf"
+
+    if ! systemctl is-active --quiet snmpd 2>/dev/null && ! pgrep -x snmpd >/dev/null 2>&1; then
+        log_result "$check_id" "$check_name" "N/A" "[Risk: ${risk_level}] SNMP service is not running"
+        return
+    fi
+    if [ -f "$conf" ] && grep -Eiq '^[[:space:]]*(rocommunity|rwcommunity)' "$conf"; then
+        log_result "$check_id" "$check_name" "FAIL" "[Risk: ${risk_level}] SNMP v1/v2 community configuration found; use SNMPv3"
+    elif [ -f "$conf" ] && grep -Eiq '^[[:space:]]*(rouser|rwuser|createUser)' "$conf"; then
+        log_result "$check_id" "$check_name" "PASS" "[Risk: ${risk_level}] SNMPv3 user-based configuration found"
+    else
+        log_result "$check_id" "$check_name" "N/A" "[Risk: ${risk_level}] SNMP version requires manual verification"
+    fi
+}
+
+latest_check_u61() {
+    local check_id="U-61"
+    local check_name="SNMP Access Control 설정"
+    local risk_level="HIGH"
+    local conf="/etc/snmp/snmpd.conf"
+
+    if ! systemctl is-active --quiet snmpd 2>/dev/null && ! pgrep -x snmpd >/dev/null 2>&1; then
+        log_result "$check_id" "$check_name" "N/A" "[Risk: ${risk_level}] SNMP service is not running"
+        return
+    fi
+    if [ -f "$conf" ] && grep -Eiq '^[[:space:]]*(rouser|rwuser|com2sec|access)' "$conf" && ! grep -Eiq '^[[:space:]]*(rocommunity|rwcommunity)[[:space:]]+public([[:space:]]|$)' "$conf"; then
+        log_result "$check_id" "$check_name" "PASS" "[Risk: ${risk_level}] SNMP access-control configuration found"
+    else
+        log_result "$check_id" "$check_name" "FAIL" "[Risk: ${risk_level}] SNMP access-control configuration is weak or not verified"
+    fi
+}
+
+latest_check_u63() {
+    local check_id="U-63"
+    local check_name="sudo 명령어 접근 관리"
+    local risk_level="MEDIUM"
+    local issues=""
+
+    [ -f /etc/sudoers ] || { log_result "$check_id" "$check_name" "N/A" "[Risk: ${risk_level}] /etc/sudoers not found"; return; }
+    local mode owner
+    mode=$(stat -c '%a' /etc/sudoers 2>/dev/null)
+    owner=$(stat -c '%U:%G' /etc/sudoers 2>/dev/null)
+    [ "$owner" != "root:root" ] && issues="${issues}/etc/sudoers owner=${owner}; "
+    [ "$mode" -gt 440 ] 2>/dev/null && issues="${issues}/etc/sudoers mode=${mode}; "
+    if grep -Eq '^[[:space:]]*%wheel[[:space:]]+ALL=' /etc/sudoers /etc/sudoers.d/* 2>/dev/null; then
+        :
+    else
+        issues="${issues}wheel sudo policy not found; "
+    fi
+    if [ -z "$issues" ]; then
+        log_result "$check_id" "$check_name" "PASS" "[Risk: ${risk_level}] sudo access is restricted through protected sudoers policy"
+    else
+        log_result "$check_id" "$check_name" "FAIL" "[Risk: ${risk_level}] ${issues}"
+    fi
+}
+
+latest_check_u65() {
+    local check_id="U-65"
+    local check_name="NTP 및 시각 동기화 설정"
+    local risk_level="MEDIUM"
+
+    if systemctl is-active --quiet chronyd 2>/dev/null || systemctl is-active --quiet ntpd 2>/dev/null; then
+        log_result "$check_id" "$check_name" "PASS" "[Risk: ${risk_level}] Time synchronization service is active"
+    elif timedatectl show -p NTPSynchronized --value 2>/dev/null | grep -qi '^yes$'; then
+        log_result "$check_id" "$check_name" "PASS" "[Risk: ${risk_level}] System reports NTP synchronized"
+    else
+        log_result "$check_id" "$check_name" "FAIL" "[Risk: ${risk_level}] NTP/time synchronization is not active or not verified"
+    fi
+}
+
+latest_check_u67() {
+    local check_id="U-67"
+    local check_name="로그 디렉터리 소유자 및 권한 설정"
+    local risk_level="MEDIUM"
+    local dir="/var/log"
+
+    if [ ! -d "$dir" ]; then
+        log_result "$check_id" "$check_name" "N/A" "[Risk: ${risk_level}] ${dir} not found"
+        return
+    fi
+    local owner mode bad
+    owner=$(stat -c '%U:%G' "$dir" 2>/dev/null)
+    mode=$(stat -c '%a' "$dir" 2>/dev/null)
+    bad=$(find "$dir" -maxdepth 1 \( -perm /002 -o ! -user root \) -print 2>/dev/null | head -20)
+    if [ "$owner" = "root:root" ] && [ -z "$bad" ]; then
+        log_result "$check_id" "$check_name" "PASS" "[Risk: ${risk_level}] ${dir} owner=${owner}, mode=${mode}, no unsafe top-level log entries found"
+    else
+        log_result "$check_id" "$check_name" "FAIL" "[Risk: ${risk_level}] ${dir} owner=${owner}, mode=${mode}, unsafe entries: ${bad:-none}"
+    fi
+}
+
+latest_check_u01() { latest_run_legacy_check "U-01" "root 계정 원격 접속 제한" check_u01; }
+latest_check_u02() { latest_run_legacy_check "U-02" "비밀번호 관리정책 설정" check_u02; }
+latest_check_u03() { latest_run_legacy_check "U-03" "계정 잠금 임계값 설정" check_u03; }
+latest_check_u04() { latest_run_legacy_check "U-04" "비밀번호 파일 보호" check_u04; }
+latest_check_u05() { latest_run_legacy_check "U-05" "root 이외의 UID가 ‘0’ 금지" check_u44; }
+latest_check_u06() { latest_run_legacy_check "U-06" "사용자 계정 su 기능 제한" check_u45; }
+latest_check_u07() { latest_run_legacy_check "U-07" "불필요한 계정 제거" check_u49; }
+latest_check_u08() { latest_run_legacy_check "U-08" "관리자 그룹에 최소한의 계정 포함" check_u50; }
+latest_check_u09() { latest_run_legacy_check "U-09" "계정이 존재하지 않는 GID 금지" check_u51; }
+latest_check_u10() { latest_run_legacy_check "U-10" "동일한 UID 금지" check_u52; }
+latest_check_u11() { latest_run_legacy_check "U-11" "사용자 Shell 점검" check_u53; }
+latest_check_u12() { latest_run_legacy_check "U-12" "세션 종료 시간 설정" check_u54; }
+latest_check_u14() { latest_run_legacy_check "U-14" "root 홈, 패스 디렉터리 권한 및 패스 설정" check_u05; }
+latest_check_u15() { latest_run_legacy_check "U-15" "파일 및 디렉터리 소유자 설정" check_u06; }
+latest_check_u16() { latest_run_legacy_check "U-16" "/etc/passwd 파일 소유자 및 권한 설정" check_u07; }
+latest_check_u18() { latest_run_legacy_check "U-18" "/etc/shadow 파일 소유자 및 권한 설정" check_u08; }
+latest_check_u19() { latest_run_legacy_check "U-19" "/etc/hosts 파일 소유자 및 권한 설정" check_u09; }
+latest_check_u20() { latest_run_legacy_check "U-20" "/etc/(x)inetd.conf 파일 소유자 및 권한 설정" check_u10; }
+latest_check_u21() { latest_run_legacy_check "U-21" "/etc/(r)syslog.conf 파일 소유자 및 권한 설정" check_u11; }
+latest_check_u22() { latest_run_legacy_check "U-22" "/etc/services 파일 소유자 및 권한 설정" check_u12; }
+latest_check_u23() { latest_run_legacy_check "U-23" "SUID, SGID, Sticky bit 설정 파일 점검" check_u13; }
+latest_check_u24() { latest_run_legacy_check "U-24" "사용자, 시스템 환경변수 파일 소유자 및 권한 설정" check_u14; }
+latest_check_u25() { latest_run_legacy_check "U-25" "world writable 파일 점검" check_u15; }
+latest_check_u26() { latest_run_legacy_check "U-26" "/dev에 존재하지 않는 device 파일 점검" check_u16; }
+latest_check_u27() { latest_run_legacy_check "U-27" "\$HOME/.rhosts, hosts.equiv 사용 금지" check_u17; }
+latest_check_u28() { latest_run_legacy_check "U-28" "접속 IP 및 포트 제한" check_u18; }
+latest_check_u29() { latest_run_legacy_check "U-29" "hosts.lpd 파일 소유자 및 권한 설정" check_u55; }
+latest_check_u30() { latest_run_legacy_check "U-30" "UMASK 설정 관리" check_u56; }
+latest_check_u31() { latest_run_legacy_check "U-31" "홈디렉토리 소유자 및 권한 설정" check_u57; }
+latest_check_u32() { latest_run_legacy_check "U-32" "홈 디렉토리로 지정한 디렉토리의 존재 관리" check_u58; }
+latest_check_u33() { latest_run_legacy_check "U-33" "숨겨진 파일 및 디렉토리 검색 및 제거" check_u59; }
+latest_check_u34() { latest_run_legacy_check "U-34" "Finger 서비스 비활성화" check_u19; }
+latest_check_u35() { latest_run_legacy_check "U-35" "공유 서비스에 대한 익명 접근 제한 설정" check_u20; }
+latest_check_u36() { latest_run_legacy_check "U-36" "r 계열 서비스 비활성화" check_u21; }
+latest_check_u37() { latest_run_legacy_check "U-37" "crontab 설정파일 권한 설정 미흡" check_u22; }
+latest_check_u38() { latest_run_legacy_check "U-38" "DoS 공격에 취약한 서비스 비활성화" check_u23; }
+latest_check_u39() { latest_run_legacy_check "U-39" "불필요한 NFS 서비스 비활성화" check_u24; }
+latest_check_u40() { latest_run_legacy_check "U-40" "NFS 접근 통제" check_u25; }
+latest_check_u41() { latest_run_legacy_check "U-41" "불필요한 automountd 제거" check_u26; }
+latest_check_u42() { latest_run_legacy_check "U-42" "불필요한 RPC 서비스 비활성화" check_u27; }
+latest_check_u43() { latest_run_legacy_check "U-43" "NIS, NIS+ 점검" check_u28; }
+latest_check_u44() { latest_run_legacy_check "U-44" "tftp, talk 서비스 비활성화" check_u29; }
+latest_check_u45() { latest_run_legacy_check "U-45" "메일 서비스 버전 점검" check_u30; }
+latest_check_u46() { latest_run_legacy_check "U-46" "일반 사용자의 메일 서비스 실행 방지" check_u32; }
+latest_check_u47() { latest_run_legacy_check "U-47" "스팸 메일 릴레이 제한" check_u31; }
+latest_check_u48() { latest_run_legacy_check "U-48" "expn, vrfy 명령어 제한" check_u70; }
+latest_check_u49() { latest_run_legacy_check "U-49" "DNS 보안 버전 패치" check_u33; }
+latest_check_u50() { latest_run_legacy_check "U-50" "DNS Zone Transfer 설정" check_u34; }
+latest_check_u54() { latest_run_legacy_check "U-54" "암호화되지 않는 FTP 서비스 비활성화" check_u61; }
+latest_check_u55() { latest_run_legacy_check "U-55" "FTP 계정 Shell 제한" check_u62; }
+latest_check_u57() { latest_run_legacy_check "U-57" "Ftpusers 파일 설정" check_u64; }
+latest_check_u58() { latest_run_legacy_check "U-58" "불필요한 SNMP 서비스 구동 점검" check_u66; }
+latest_check_u60() { latest_run_legacy_check "U-60" "SNMP Community String 복잡성 설정" check_u67; }
+latest_check_u62() { latest_run_legacy_check "U-62" "로그인 시 경고 메시지 설정" check_u68; }
+latest_check_u64() { latest_run_legacy_check "U-64" "주기적 보안 패치 및 벤더 권고사항 적용" check_u42; }
+latest_check_u66() { latest_run_legacy_check "U-66" "정책에 따른 시스템 로깅 설정" check_u72; }
+
+
+#===============================================================================
 # 메인 실행
 #===============================================================================
 
@@ -2628,81 +2914,74 @@ main() {
     echo "Starting security assessment..."
     echo ""
 
-    # 취약점 점검 실행
-    check_u01
-    check_u02
-    check_u03
-    check_u04
-    check_u05
-    check_u06
-    check_u07
-    check_u08
-    check_u09
-    check_u10
-    check_u11
-    check_u12
-    check_u13
-    check_u14
-    check_u15
-    check_u16
-    check_u17
-    check_u18
-    check_u19
-    check_u20
-    check_u21
-    check_u22
-    check_u23
-    check_u24
-    check_u25
-    check_u26
-    check_u27
-    check_u28
-    check_u29
-    check_u30
-    check_u31
-    check_u32
-    check_u33
-    check_u34
-    check_u35
-    check_u36
-    check_u37
-    check_u38
-    check_u39
-    check_u40
-    check_u41
-    check_u42
-    check_u43
-    check_u44
-    check_u45
-    check_u46
-    check_u47
-    check_u48
-    check_u49
-    check_u50
-    check_u51
-    check_u52
-    check_u53
-    check_u54
-    check_u55
-    check_u56
-    check_u57
-    check_u58
-    check_u59
-    check_u60
-    check_u61
-    check_u62
-    check_u63
-    check_u64
-    check_u65
-    check_u66
-    check_u67
-    check_u68
-    check_u69
-    check_u70
-    check_u71
-    check_u72
-    check_u73
-    check_u74
+    # 최신 2026 UNIX/Linux 기준 취약점 점검 실행 (U-01 ~ U-67)
+    latest_check_u01
+    latest_check_u02
+    latest_check_u03
+    latest_check_u04
+    latest_check_u05
+    latest_check_u06
+    latest_check_u07
+    latest_check_u08
+    latest_check_u09
+    latest_check_u10
+    latest_check_u11
+    latest_check_u12
+    latest_check_u13
+    latest_check_u14
+    latest_check_u15
+    latest_check_u16
+    latest_check_u17
+    latest_check_u18
+    latest_check_u19
+    latest_check_u20
+    latest_check_u21
+    latest_check_u22
+    latest_check_u23
+    latest_check_u24
+    latest_check_u25
+    latest_check_u26
+    latest_check_u27
+    latest_check_u28
+    latest_check_u29
+    latest_check_u30
+    latest_check_u31
+    latest_check_u32
+    latest_check_u33
+    latest_check_u34
+    latest_check_u35
+    latest_check_u36
+    latest_check_u37
+    latest_check_u38
+    latest_check_u39
+    latest_check_u40
+    latest_check_u41
+    latest_check_u42
+    latest_check_u43
+    latest_check_u44
+    latest_check_u45
+    latest_check_u46
+    latest_check_u47
+    latest_check_u48
+    latest_check_u49
+    latest_check_u50
+    latest_check_u51
+    latest_check_u52
+    latest_check_u53
+    latest_check_u54
+    latest_check_u55
+    latest_check_u56
+    latest_check_u57
+    latest_check_u58
+    latest_check_u59
+    latest_check_u60
+    latest_check_u61
+    latest_check_u62
+    latest_check_u63
+    latest_check_u64
+    latest_check_u65
+    latest_check_u66
+    latest_check_u67
 
     # 결과 요약
     echo "" >> "$RESULT_FILE"

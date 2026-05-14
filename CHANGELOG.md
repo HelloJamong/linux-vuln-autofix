@@ -7,6 +7,59 @@
 
 ## [Unreleased]
 
+## [v26.05.01] - 2026-05-14
+
+### Added
+- **최신 상세가이드 기준 항목 매핑 문서** (`docs/latest_mapping_guide.md`)
+  - Linux 기존 `U-*` 항목과 최신 `U-01~U-67` 항목 간 매핑표 추가
+  - MySQL/MariaDB 기존 `MX-*` 항목과 최신 DBMS `D-*` 항목 간 매핑표 추가
+  - 과거 기준에는 있었지만 최신 기준에서 제거·흡수·이관된 항목 목록 추가
+  - 과거 기준에는 없었지만 최신 기준에서 신규로 추가된 항목 목록 추가
+
+- **Linux 신규 점검 항목**
+  - U-13: 안전한 비밀번호 암호화 알고리즘 사용 점검
+  - U-17: 시스템 시작 스크립트 권한 설정 점검
+  - U-51: DNS 서비스의 취약한 동적 업데이트 설정 금지 점검
+  - U-52: Telnet 서비스 비활성화 점검
+  - U-53: FTP 서비스 정보 노출 제한 점검
+  - U-56: FTP 서비스 접근 제어 설정 점검
+  - U-59: 안전한 SNMP 버전 사용 점검
+  - U-61: SNMP Access Control 설정 점검
+  - U-63: sudo 명령어 접근 관리 점검
+  - U-65: NTP 및 시각 동기화 설정 점검
+  - U-67: 로그 디렉터리 소유자 및 권한 설정 점검
+
+- **MySQL/MariaDB 신규 DBMS 점검 항목**
+  - D-06: DB 사용자 계정 개별 부여 점검
+  - D-07: root 권한 서비스 구동 제한 점검
+  - D-08: 안전한 암호화 알고리즘 사용 점검
+  - D-11: DBA 이외 사용자의 시스템 테이블 접근 제한 점검
+  - D-21: 인가되지 않은 GRANT OPTION 사용 제한 점검
+
+### Changed
+- **Linux 점검/조치 체계 최신화**
+  - 기존 Linux 실행 체계를 최신 상세가이드 기준 `U-01~U-67`로 재정렬
+  - 기존 점검/조치 함수는 가능한 범위에서 최신 항목에 매핑하여 재사용
+  - 최신 기준에서 직접 대응되지 않는 웹 서비스·Apache·at 파일·개별 OpenSSL CVE 항목은 제거, 이관 또는 `U-64` 패치 관리 범주로 통합
+
+- **MySQL/MariaDB 점검/조치 체계 최신화**
+  - 기존 `MX-01~MX-16` 체계를 최신 DBMS `D-*` 체계로 재매핑
+  - MySQL/MariaDB 대상 점검 항목을 `D-01`, `D-02`, `D-03`, `D-04`, `D-06`, `D-07`, `D-08`, `D-10`, `D-11`, `D-14`, `D-21`, `D-25`로 정리
+  - MariaDB는 MySQL 호환 대상으로 간주하여 별도 코드 체계 없이 동일한 `D-*` 기준 적용
+  - 기존 `MX-*` 결과 파일을 일부 fallback으로 해석할 수 있도록 조치 스크립트에 호환 매핑 유지
+
+- **문서 최신화**
+  - README의 Linux 점검 범위를 `U-01~U-74`에서 `U-01~U-67`로 변경
+  - README의 DB 점검 범위를 기존 `MX-*`에서 최신 `D-*` 기준으로 변경
+  - README에 KISA 최신 원문 게시글 링크 추가
+    - `https://www.kisa.or.kr/2060204/form?postSeq=22&page=1`
+    - KISA 게시글 등록일: `2025-12-24`
+
+### Security
+- 최신 KISA `주요정보통신기반시설 기술적 취약점 분석·평가 방법 상세가이드` 기준으로 Linux 및 MySQL/MariaDB 취약점 항목을 재정렬
+- Linux 보안 점검 범위를 최신 UNIX/Linux 항목 67개 기준으로 정리
+- MySQL/MariaDB 보안 점검 범위를 최신 DBMS 항목 중 MySQL 대상 12개 항목 기준으로 정리
+
 ## [v26.03.02] - 2026-03-27
 
 ### Added
@@ -140,6 +193,7 @@
 - 각 버전의 릴리스 날짜는 YYYY-MM-DD 형식으로 표시됩니다.
 - 최신 버전이 항상 파일 상단에 위치합니다.
 
-[Unreleased]: https://github.com/yourusername/linux-vuln-autofix/compare/v26.03.02...HEAD
+[Unreleased]: https://github.com/yourusername/linux-vuln-autofix/compare/v26.05.01...HEAD
+[v26.05.01]: https://github.com/yourusername/linux-vuln-autofix/compare/v26.03.02...v26.05.01
 [v26.03.02]: https://github.com/yourusername/linux-vuln-autofix/compare/v26.03.01...v26.03.02
 [v26.03.01]: https://github.com/yourusername/linux-vuln-autofix/releases/tag/v26.03.01

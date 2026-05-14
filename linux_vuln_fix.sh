@@ -5,11 +5,11 @@
 # 설명: 취약점 점검 결과를 바탕으로 자동으로 보안 조치를 수행합니다.
 # 사용법: sudo ./linux_vuln_fix.sh [check_result_file]
 # 출력: hostname_YYMMDD_hhmmss_fix_result.txt 형식의 조치 결과 파일
-# 버전: 26.03.01
+# 버전: 26.05.01
 #===============================================================================
 
 # 버전 정보
-VERSION="26.03.01"
+VERSION="26.05.01"
 SCRIPT_NAME="Linux Vulnerability Auto-Fix Script"
 
 # 색상 정의
@@ -1615,6 +1615,148 @@ fix_u72() {
 }
 
 #===============================================================================
+# Latest 2026 KISA UNIX/Linux remediation mapping layer (U-01 ~ U-67)
+#===============================================================================
+
+latest_status_for() {
+    local id="$1"
+    [ -n "$CHECK_RESULT_FILE" ] && [ -f "$CHECK_RESULT_FILE" ] || return 1
+    grep -A 2 "^\[${id}\]" "$CHECK_RESULT_FILE" | grep -m1 '^Status:' | sed 's/^Status: //'
+}
+
+latest_detail_for() {
+    local id="$1"
+    [ -n "$CHECK_RESULT_FILE" ] && [ -f "$CHECK_RESULT_FILE" ] || return 1
+    grep -A 2 "^\[${id}\]" "$CHECK_RESULT_FILE" | grep -m1 '^Detail:' | sed 's/^Detail: //'
+}
+
+latest_is_failed() {
+    local id="$1"
+    local fallback_id="$2"
+    local status
+    status=$(latest_status_for "$id")
+    [ -z "$status" ] && [ -n "$fallback_id" ] && status=$(latest_status_for "$fallback_id")
+    [ "$status" = "FAIL" ]
+}
+
+latest_run_legacy_fix() {
+    local new_id="$1"
+    local new_name="$2"
+    local legacy_id="$3"
+    local legacy_func="$4"
+    local tmp_check tmp_fix status detail out_status out_detail
+
+    tmp_check=$(mktemp)
+    tmp_fix=$(mktemp)
+    status=$(latest_status_for "$new_id")
+    detail=$(latest_detail_for "$new_id")
+    if [ -z "$status" ]; then
+        status=$(latest_status_for "$legacy_id")
+        detail=$(latest_detail_for "$legacy_id")
+    fi
+    [ -z "$status" ] && status="PASS"
+    [ -z "$detail" ] && detail="Mapped from ${new_id} to legacy ${legacy_id}"
+
+    {
+        echo "[${legacy_id}] ${new_name}"
+        echo "Status: ${status}"
+        echo "Detail: ${detail}"
+        echo "--------------------------------------------------------------------------------"
+    } > "$tmp_check"
+
+    ( CHECK_RESULT_FILE="$tmp_check"; FIX_RESULT_FILE="$tmp_fix"; "$legacy_func" ) >/dev/null 2>&1
+
+    out_status=$(grep -m1 '^Status:' "$tmp_fix" | sed 's/^Status: //')
+    out_detail=$(grep -m1 '^Detail:' "$tmp_fix" | sed 's/^Detail: //')
+    rm -f "$tmp_check" "$tmp_fix"
+
+    [ -z "$out_status" ] && out_status="SKIPPED"
+    [ -z "$out_detail" ] && out_detail="Legacy remediation ${legacy_func} produced no parseable result"
+    log_fix_result "$new_id" "$new_name" "$out_status" "$out_detail"
+}
+
+latest_manual_fix() {
+    local id="$1"
+    local name="$2"
+    local fallback_id="$3"
+    local message="$4"
+    if ! latest_is_failed "$id" "$fallback_id"; then
+        log_fix_result "$id" "$name" "SKIPPED" "Already passed or N/A"
+        return
+    fi
+    log_fix_result "$id" "$name" "FAILED" "Manual intervention required. ${message}"
+}
+
+latest_fix_u01() { latest_run_legacy_fix "U-01" "root 계정 원격 접속 제한" "U-01" fix_u01; }
+latest_fix_u02() { latest_run_legacy_fix "U-02" "비밀번호 관리정책 설정" "U-02" fix_u02; }
+latest_fix_u03() { latest_run_legacy_fix "U-03" "계정 잠금 임계값 설정" "U-03" fix_u03; }
+latest_fix_u04() { latest_run_legacy_fix "U-04" "비밀번호 파일 보호" "U-04" fix_u04; }
+latest_fix_u05() { latest_run_legacy_fix "U-05" "root 이외의 UID가 ‘0’ 금지" "U-44" fix_u44; }
+latest_fix_u06() { latest_run_legacy_fix "U-06" "사용자 계정 su 기능 제한" "U-45" fix_u45; }
+latest_fix_u07() { latest_run_legacy_fix "U-07" "불필요한 계정 제거" "U-49" fix_u49; }
+latest_fix_u08() { latest_run_legacy_fix "U-08" "관리자 그룹에 최소한의 계정 포함" "U-50" fix_u50; }
+latest_fix_u09() { latest_run_legacy_fix "U-09" "계정이 존재하지 않는 GID 금지" "U-51" fix_u51; }
+latest_fix_u10() { latest_run_legacy_fix "U-10" "동일한 UID 금지" "U-52" fix_u52; }
+latest_fix_u11() { latest_run_legacy_fix "U-11" "사용자 Shell 점검" "U-53" fix_u53; }
+latest_fix_u12() { latest_run_legacy_fix "U-12" "세션 종료 시간 설정" "U-54" fix_u54; }
+latest_fix_u13() { latest_manual_fix "U-13" "안전한 비밀번호 암호화 알고리즘 사용" "" "Configure SHA-256/SHA-512/yescrypt password hashing policy and rotate weak hashes."; }
+latest_fix_u14() { latest_run_legacy_fix "U-14" "root 홈, 패스 디렉터리 권한 및 패스 설정" "U-05" fix_u05; }
+latest_fix_u15() { latest_run_legacy_fix "U-15" "파일 및 디렉터리 소유자 설정" "U-06" fix_u06; }
+latest_fix_u16() { latest_run_legacy_fix "U-16" "/etc/passwd 파일 소유자 및 권한 설정" "U-07" fix_u07; }
+latest_fix_u17() { latest_manual_fix "U-17" "시스템 시작 스크립트 권한 설정" "" "Set startup scripts to root ownership and remove group/world write permissions after service impact review."; }
+latest_fix_u18() { latest_run_legacy_fix "U-18" "/etc/shadow 파일 소유자 및 권한 설정" "U-08" fix_u08; }
+latest_fix_u19() { latest_run_legacy_fix "U-19" "/etc/hosts 파일 소유자 및 권한 설정" "U-09" fix_u09; }
+latest_fix_u20() { latest_run_legacy_fix "U-20" "/etc/(x)inetd.conf 파일 소유자 및 권한 설정" "U-10" fix_u10; }
+latest_fix_u21() { latest_run_legacy_fix "U-21" "/etc/(r)syslog.conf 파일 소유자 및 권한 설정" "U-11" fix_u11; }
+latest_fix_u22() { latest_run_legacy_fix "U-22" "/etc/services 파일 소유자 및 권한 설정" "U-12" fix_u12; }
+latest_fix_u23() { latest_run_legacy_fix "U-23" "SUID, SGID, Sticky bit 설정 파일 점검" "U-13" fix_u13; }
+latest_fix_u24() { latest_run_legacy_fix "U-24" "사용자, 시스템 환경변수 파일 소유자 및 권한 설정" "U-14" fix_u14; }
+latest_fix_u25() { latest_run_legacy_fix "U-25" "world writable 파일 점검" "U-15" fix_u15; }
+latest_fix_u26() { latest_run_legacy_fix "U-26" "/dev에 존재하지 않는 device 파일 점검" "U-16" fix_u16; }
+latest_fix_u27() { latest_run_legacy_fix "U-27" "\$HOME/.rhosts, hosts.equiv 사용 금지" "U-17" fix_u17; }
+latest_fix_u28() { latest_run_legacy_fix "U-28" "접속 IP 및 포트 제한" "U-18" fix_u18; }
+latest_fix_u29() { latest_run_legacy_fix "U-29" "hosts.lpd 파일 소유자 및 권한 설정" "U-55" fix_u55; }
+latest_fix_u30() { latest_run_legacy_fix "U-30" "UMASK 설정 관리" "U-56" fix_u56; }
+latest_fix_u31() { latest_run_legacy_fix "U-31" "홈디렉토리 소유자 및 권한 설정" "U-57" fix_u57; }
+latest_fix_u32() { latest_run_legacy_fix "U-32" "홈 디렉토리로 지정한 디렉토리의 존재 관리" "U-58" fix_u58; }
+latest_fix_u33() { latest_run_legacy_fix "U-33" "숨겨진 파일 및 디렉토리 검색 및 제거" "U-59" fix_u59; }
+latest_fix_u34() { latest_run_legacy_fix "U-34" "Finger 서비스 비활성화" "U-19" fix_u19; }
+latest_fix_u35() { latest_run_legacy_fix "U-35" "공유 서비스에 대한 익명 접근 제한 설정" "U-20" fix_u20; }
+latest_fix_u36() { latest_run_legacy_fix "U-36" "r 계열 서비스 비활성화" "U-21" fix_u21; }
+latest_fix_u37() { latest_run_legacy_fix "U-37" "crontab 설정파일 권한 설정 미흡" "U-22" fix_u22; }
+latest_fix_u38() { latest_run_legacy_fix "U-38" "DoS 공격에 취약한 서비스 비활성화" "U-23" fix_u23; }
+latest_fix_u39() { latest_run_legacy_fix "U-39" "불필요한 NFS 서비스 비활성화" "U-24" fix_u24; }
+latest_fix_u40() { latest_run_legacy_fix "U-40" "NFS 접근 통제" "U-25" fix_u25; }
+latest_fix_u41() { latest_run_legacy_fix "U-41" "불필요한 automountd 제거" "U-26" fix_u26; }
+latest_fix_u42() { latest_run_legacy_fix "U-42" "불필요한 RPC 서비스 비활성화" "U-27" fix_u27; }
+latest_fix_u43() { latest_run_legacy_fix "U-43" "NIS, NIS+ 점검" "U-28" fix_u28; }
+latest_fix_u44() { latest_run_legacy_fix "U-44" "tftp, talk 서비스 비활성화" "U-29" fix_u29; }
+latest_fix_u45() { latest_run_legacy_fix "U-45" "메일 서비스 버전 점검" "U-30" fix_u30; }
+latest_fix_u46() { latest_run_legacy_fix "U-46" "일반 사용자의 메일 서비스 실행 방지" "U-32" fix_u32; }
+latest_fix_u47() { latest_run_legacy_fix "U-47" "스팸 메일 릴레이 제한" "U-31" fix_u31; }
+latest_fix_u48() { latest_run_legacy_fix "U-48" "expn, vrfy 명령어 제한" "U-70" fix_u70; }
+latest_fix_u49() { latest_run_legacy_fix "U-49" "DNS 보안 버전 패치" "U-33" fix_u33; }
+latest_fix_u50() { latest_run_legacy_fix "U-50" "DNS Zone Transfer 설정" "U-34" fix_u34; }
+latest_fix_u51() { latest_manual_fix "U-51" "DNS 서비스의 취약한 동적 업데이트 설정 금지" "" "Set BIND allow-update to none or restrict it to authenticated/approved hosts."; }
+latest_fix_u52() { latest_manual_fix "U-52" "Telnet 서비스 비활성화" "" "Disable telnet.socket/telnet service and use SSH."; }
+latest_fix_u53() { latest_manual_fix "U-53" "FTP 서비스 정보 노출 제한" "" "Configure FTP banner and response settings to avoid product/version disclosure."; }
+latest_fix_u54() { latest_run_legacy_fix "U-54" "암호화되지 않는 FTP 서비스 비활성화" "U-61" fix_u61; }
+latest_fix_u55() { latest_run_legacy_fix "U-55" "FTP 계정 Shell 제한" "U-62" fix_u62; }
+latest_fix_u56() { latest_manual_fix "U-56" "FTP 서비스 접근 제어 설정" "" "Restrict FTP access by approved users, groups, and source addresses."; }
+latest_fix_u57() { latest_run_legacy_fix "U-57" "Ftpusers 파일 설정" "U-64" fix_u64; }
+latest_fix_u58() { latest_run_legacy_fix "U-58" "불필요한 SNMP 서비스 구동 점검" "U-66" fix_u66; }
+latest_fix_u59() { latest_manual_fix "U-59" "안전한 SNMP 버전 사용" "" "Migrate SNMP to v3 and remove v1/v2 community settings."; }
+latest_fix_u60() { latest_run_legacy_fix "U-60" "SNMP Community String 복잡성 설정" "U-67" fix_u67; }
+latest_fix_u61() { latest_manual_fix "U-61" "SNMP Access Control 설정" "" "Restrict SNMP users/communities to approved managers and views."; }
+latest_fix_u62() { latest_run_legacy_fix "U-62" "로그인 시 경고 메시지 설정" "U-68" fix_u68; }
+latest_fix_u63() { latest_manual_fix "U-63" "sudo 명령어 접근 관리" "" "Review sudoers policy, restrict sudo to approved groups/users, and protect sudoers permissions."; }
+latest_fix_u64() { latest_run_legacy_fix "U-64" "주기적 보안 패치 및 벤더 권고사항 적용" "U-42" fix_u42; }
+latest_fix_u65() { latest_manual_fix "U-65" "NTP 및 시각 동기화 설정" "" "Enable chronyd/ntpd or systemd-timesyncd with approved time sources."; }
+latest_fix_u66() { latest_run_legacy_fix "U-66" "정책에 따른 시스템 로깅 설정" "U-72" fix_u72; }
+latest_fix_u67() { latest_manual_fix "U-67" "로그 디렉터리 소유자 및 권한 설정" "" "Set log directories to root-owned, remove world-write permissions, and preserve application-specific ownership exceptions."; }
+
+
+#===============================================================================
 # 메인 실행 로직
 #===============================================================================
 
@@ -1669,79 +1811,74 @@ main() {
     echo -e "${BLUE}[INFO] Starting vulnerability remediation...${NC}"
     echo ""
 
-    # 모든 조치 함수 실행
-    fix_u01
-    fix_u02
-    fix_u03
-    fix_u04
-    fix_u05
-    fix_u06
-    fix_u07
-    fix_u08
-    fix_u09
-    fix_u10
-    fix_u11
-    fix_u12
-    fix_u13
-    fix_u14
-    fix_u15
-    fix_u16
-    fix_u17
-    fix_u18
-    fix_u19
-    fix_u20
-    fix_u21
-    fix_u22
-    fix_u23
-    fix_u24
-    fix_u25
-    fix_u26
-    fix_u27
-    fix_u28
-    fix_u29
-    fix_u30
-    fix_u31
-    fix_u32
-    fix_u33
-    fix_u34
-    fix_u35
-    fix_u36
-    fix_u37
-    fix_u38
-    fix_u39
-    fix_u40
-    fix_u41
-    fix_u42
-    fix_u43
-    fix_u44
-    fix_u45
-    fix_u46
-    fix_u47
-    fix_u48
-    fix_u49
-    fix_u50
-    fix_u51
-    fix_u52
-    fix_u53
-    fix_u54
-    fix_u55
-    fix_u56
-    fix_u57
-    fix_u58
-    fix_u59
-    fix_u60
-    fix_u61
-    fix_u62
-    fix_u63
-    fix_u64
-    fix_u65
-    fix_u66
-    fix_u67
-    fix_u68
-    fix_u69
-    fix_u70
-    fix_u71
-    fix_u72
+    # 최신 2026 UNIX/Linux 기준 모든 조치 함수 실행 (U-01 ~ U-67)
+    latest_fix_u01
+    latest_fix_u02
+    latest_fix_u03
+    latest_fix_u04
+    latest_fix_u05
+    latest_fix_u06
+    latest_fix_u07
+    latest_fix_u08
+    latest_fix_u09
+    latest_fix_u10
+    latest_fix_u11
+    latest_fix_u12
+    latest_fix_u13
+    latest_fix_u14
+    latest_fix_u15
+    latest_fix_u16
+    latest_fix_u17
+    latest_fix_u18
+    latest_fix_u19
+    latest_fix_u20
+    latest_fix_u21
+    latest_fix_u22
+    latest_fix_u23
+    latest_fix_u24
+    latest_fix_u25
+    latest_fix_u26
+    latest_fix_u27
+    latest_fix_u28
+    latest_fix_u29
+    latest_fix_u30
+    latest_fix_u31
+    latest_fix_u32
+    latest_fix_u33
+    latest_fix_u34
+    latest_fix_u35
+    latest_fix_u36
+    latest_fix_u37
+    latest_fix_u38
+    latest_fix_u39
+    latest_fix_u40
+    latest_fix_u41
+    latest_fix_u42
+    latest_fix_u43
+    latest_fix_u44
+    latest_fix_u45
+    latest_fix_u46
+    latest_fix_u47
+    latest_fix_u48
+    latest_fix_u49
+    latest_fix_u50
+    latest_fix_u51
+    latest_fix_u52
+    latest_fix_u53
+    latest_fix_u54
+    latest_fix_u55
+    latest_fix_u56
+    latest_fix_u57
+    latest_fix_u58
+    latest_fix_u59
+    latest_fix_u60
+    latest_fix_u61
+    latest_fix_u62
+    latest_fix_u63
+    latest_fix_u64
+    latest_fix_u65
+    latest_fix_u66
+    latest_fix_u67
 
     # 최종 통계 출력
     echo ""

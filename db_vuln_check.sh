@@ -4,11 +4,11 @@
 #
 # 설명: MySQL/MariaDB의 보안 취약점을 점검하고 결과를 파일로 저장합니다.
 # 출력: hostname_YYMMDD_hhmmss_mysql_result.txt 형식의 결과 파일
-# 버전: 26.03.01
+# 버전: 26.05.01
 #===============================================================================
 
 # 버전 정보
-VERSION="26.03.01"
+VERSION="26.05.01"
 SCRIPT_NAME="MySQL/MariaDB Vulnerability Check Script"
 
 # 색상 정의
@@ -553,17 +553,196 @@ check_mx16() {
 }
 
 #===============================================================================
+# Latest 2026 KISA DBMS mapping layer for MySQL/MariaDB (D-* codes)
+#===============================================================================
+
+check_d01() {
+    local check_id="D-01"
+    local check_name="기본 계정의 비밀번호, 정책 등을 변경하여 사용"
+    local risk_level="HIGH"
+    local empty_root
+    empty_root=$(execute_query "SELECT CONCAT(user,'@',host) FROM mysql.user WHERE user='root' AND (authentication_string='' OR authentication_string IS NULL)" 2>/dev/null)
+    if [ -z "$empty_root" ]; then
+        log_result "$check_id" "$check_name" "PASS" "[Risk: ${risk_level}] Root/default account password is not empty"
+    else
+        log_result "$check_id" "$check_name" "FAIL" "[Risk: ${risk_level}] Root/default accounts without password: $(echo "$empty_root" | tr '\n' ', ')"
+    fi
+}
+
+check_d02() {
+    local check_id="D-02"
+    local check_name="데이터베이스의 불필요 계정을 제거하거나, 잠금설정 후 사용"
+    local risk_level="HIGH"
+    local anonymous test_db
+    anonymous=$(execute_query "SELECT CONCAT(user,'@',host) FROM mysql.user WHERE user=''" 2>/dev/null)
+    test_db=$(execute_query "SHOW DATABASES LIKE 'test'" 2>/dev/null)
+    if [ -z "$anonymous" ] && [ -z "$test_db" ]; then
+        log_result "$check_id" "$check_name" "PASS" "[Risk: ${risk_level}] No anonymous account or test database found; review business accounts manually"
+    else
+        log_result "$check_id" "$check_name" "FAIL" "[Risk: ${risk_level}] Unnecessary default objects found: anonymous=${anonymous:-none}, test_db=${test_db:-none}"
+    fi
+}
+
+check_d03() {
+    local check_id="D-03"
+    local check_name="비밀번호 사용 기간 및 복잡도를 기관의 정책에 맞도록 설정"
+    local risk_level="HIGH"
+    local validate length lifetime simple
+    validate=$(execute_query "SHOW VARIABLES LIKE 'validate_password%'" 2>/dev/null)
+    length=$(execute_query "SHOW VARIABLES LIKE 'validate_password.length'" 2>/dev/null | awk '{print $2}')
+    lifetime=$(execute_query "SHOW VARIABLES LIKE 'default_password_lifetime'" 2>/dev/null | awk '{print $2}')
+    simple=$(execute_query "SHOW VARIABLES LIKE 'simple_password_check%'" 2>/dev/null)
+    if { [ -n "$validate" ] && [ "${length:-0}" -ge 8 ] 2>/dev/null; } || [ -n "$simple" ]; then
+        log_result "$check_id" "$check_name" "PASS" "[Risk: ${risk_level}] Password complexity policy found; default_password_lifetime=${lifetime:-not verified}"
+    else
+        log_result "$check_id" "$check_name" "FAIL" "[Risk: ${risk_level}] Password complexity policy not verified"
+    fi
+}
+
+check_d04() {
+    local check_id="D-04"
+    local check_name="데이터베이스 관리자 권한을 꼭 필요한 계정 및 그룹에 대해서만 허용"
+    local risk_level="HIGH"
+    local admins
+    admins=$(execute_query "SELECT CONCAT(user,'@',host) FROM mysql.user WHERE user NOT IN ('root','mysql.sys','mysql.session','mysql.infoschema') AND (Super_priv='Y' OR Grant_priv='Y')" 2>/dev/null)
+    if [ -z "$admins" ]; then
+        log_result "$check_id" "$check_name" "PASS" "[Risk: ${risk_level}] No non-default accounts with SUPER/GRANT global admin privileges found"
+    else
+        log_result "$check_id" "$check_name" "FAIL" "[Risk: ${risk_level}] Accounts requiring admin privilege review: $(echo "$admins" | tr '\n' ', ')"
+    fi
+}
+
+check_d06() {
+    local check_id="D-06"
+    local check_name="DB 사용자 계정을 개별적으로 부여하여 사용"
+    local risk_level="MEDIUM"
+    log_result "$check_id" "$check_name" "N/A" "[Risk: ${risk_level}] Shared-account usage cannot be proven from DB metadata alone; review account ownership and application mappings"
+}
+
+check_d07() {
+    local check_id="D-07"
+    local check_name="root 권한으로 서비스 구동 제한"
+    local risk_level="MEDIUM"
+    local root_proc
+    root_proc=$(ps -eo user=,comm= 2>/dev/null | awk '$1=="root" && ($2=="mysqld" || $2=="mariadbd") {print $0}')
+    if [ -z "$root_proc" ]; then
+        log_result "$check_id" "$check_name" "PASS" "[Risk: ${risk_level}] mysqld/mariadbd is not running as OS root"
+    else
+        log_result "$check_id" "$check_name" "FAIL" "[Risk: ${risk_level}] DB process is running as root: ${root_proc}"
+    fi
+}
+
+check_d08() {
+    local check_id="D-08"
+    local check_name="안전한 암호화 알고리즘 사용"
+    local risk_level="HIGH"
+    local weak_plugins plugins
+    plugins=$(execute_query "SELECT DISTINCT plugin FROM mysql.user" 2>/dev/null)
+    weak_plugins=$(echo "$plugins" | grep -Ei 'mysql_old_password|old_password' || true)
+    if [ -n "$weak_plugins" ]; then
+        log_result "$check_id" "$check_name" "FAIL" "[Risk: ${risk_level}] Weak authentication plugin found: ${weak_plugins}"
+    elif [ -n "$plugins" ]; then
+        log_result "$check_id" "$check_name" "PASS" "[Risk: ${risk_level}] No known weak authentication plugin found: $(echo "$plugins" | tr '\n' ', ')"
+    else
+        log_result "$check_id" "$check_name" "N/A" "[Risk: ${risk_level}] Authentication plugin information could not be verified"
+    fi
+}
+
+check_d10() {
+    local check_id="D-10"
+    local check_name="원격에서 DB 서버로의 접속 제한"
+    local risk_level="HIGH"
+    local wildcard bind_address root_remote issues=""
+    wildcard=$(execute_query "SELECT CONCAT(user,'@',host) FROM mysql.user WHERE host='%'" 2>/dev/null)
+    root_remote=$(execute_query "SELECT CONCAT(user,'@',host) FROM mysql.user WHERE user='root' AND host NOT IN ('localhost','127.0.0.1','::1')" 2>/dev/null)
+    bind_address=$(execute_query "SHOW VARIABLES LIKE 'bind_address'" 2>/dev/null | awk '{print $2}')
+    [ -n "$wildcard" ] && issues="${issues}wildcard hosts: $(echo "$wildcard" | tr '\n' ', '); "
+    [ -n "$root_remote" ] && issues="${issues}remote root: $(echo "$root_remote" | tr '\n' ', '); "
+    [[ "$bind_address" == "0.0.0.0" || "$bind_address" == "*" || "$bind_address" == "::" ]] && issues="${issues}bind_address=${bind_address}; "
+    if [ -z "$issues" ]; then
+        log_result "$check_id" "$check_name" "PASS" "[Risk: ${risk_level}] DB remote access appears restricted (bind_address=${bind_address:-not set})"
+    else
+        log_result "$check_id" "$check_name" "FAIL" "[Risk: ${risk_level}] ${issues}"
+    fi
+}
+
+check_d11() {
+    local check_id="D-11"
+    local check_name="DBA 이외의 인가되지 않은 사용자가 시스템 테이블에 접근할 수 없도록 설정"
+    local risk_level="HIGH"
+    local users
+    users=$(execute_query "SELECT CONCAT(user,'@',host) FROM mysql.user WHERE user NOT IN ('root','mysql.sys','mysql.session','mysql.infoschema') AND Select_priv='Y'" 2>/dev/null)
+    if [ -z "$users" ]; then
+        log_result "$check_id" "$check_name" "PASS" "[Risk: ${risk_level}] No non-default accounts with global SELECT privilege found"
+    else
+        log_result "$check_id" "$check_name" "FAIL" "[Risk: ${risk_level}] Accounts with broad system-table-readable privileges require review: $(echo "$users" | tr '\n' ', ')"
+    fi
+}
+
+check_d14() {
+    local check_id="D-14"
+    local check_name="데이터베이스의 주요 설정 파일, 비밀번호 파일 등과 같은 주요 파일들의 접근 권한이 적절하게 설정"
+    local risk_level="MEDIUM"
+    local files=(/etc/my.cnf /etc/mysql/my.cnf /etc/my.cnf.d/mysql-server.cnf /etc/my.cnf.d/mariadb-server.cnf)
+    local found=false issues=""
+    for file in "${files[@]}"; do
+        [ -f "$file" ] || continue
+        found=true
+        local mode owner
+        mode=$(stat -c '%a' "$file" 2>/dev/null)
+        owner=$(stat -c '%U:%G' "$file" 2>/dev/null)
+        if [ "${mode: -1}" -gt 0 ] 2>/dev/null || [ "${mode: -2:1}" -gt 4 ] 2>/dev/null; then
+            issues="${issues}${file}(owner=${owner},mode=${mode}); "
+        fi
+    done
+    if [ "$found" = false ]; then
+        log_result "$check_id" "$check_name" "N/A" "[Risk: ${risk_level}] Known MySQL/MariaDB configuration files were not found"
+    elif [ -z "$issues" ]; then
+        log_result "$check_id" "$check_name" "PASS" "[Risk: ${risk_level}] MySQL/MariaDB configuration file permissions are acceptable"
+    else
+        log_result "$check_id" "$check_name" "FAIL" "[Risk: ${risk_level}] Unsafe configuration file permissions: ${issues}"
+    fi
+}
+
+check_d21() {
+    local check_id="D-21"
+    local check_name="인가되지 않은 GRANT OPTION 사용 제한"
+    local risk_level="MEDIUM"
+    local grant_users
+    grant_users=$(execute_query "SELECT CONCAT(user,'@',host) FROM mysql.user WHERE user NOT IN ('root','mysql.sys','mysql.session','mysql.infoschema') AND Grant_priv='Y'" 2>/dev/null)
+    if [ -z "$grant_users" ]; then
+        log_result "$check_id" "$check_name" "PASS" "[Risk: ${risk_level}] No non-default accounts with global GRANT OPTION found"
+    else
+        log_result "$check_id" "$check_name" "FAIL" "[Risk: ${risk_level}] Accounts with GRANT OPTION require authorization review: $(echo "$grant_users" | tr '\n' ', ')"
+    fi
+}
+
+check_d25() {
+    local check_id="D-25"
+    local check_name="주기적 보안 패치 및 벤더 권고 사항 적용"
+    local risk_level="HIGH"
+    local version
+    version=$(execute_query "SELECT VERSION()" 2>/dev/null)
+    if [ -n "$version" ]; then
+        log_result "$check_id" "$check_name" "PASS" "[Risk: ${risk_level}] Current version: ${version}; verify against current vendor security advisories"
+    else
+        log_result "$check_id" "$check_name" "FAIL" "[Risk: ${risk_level}] Cannot determine MySQL/MariaDB version"
+    fi
+}
+
+
+#===============================================================================
 # 메인 실행
 #===============================================================================
 
 main() {
+    # 명령행 인자 파싱 (--version, --help는 여기서 처리)
+    parse_args "$@"
+
     echo "================================================================================"
     echo "MySQL/MariaDB Security Vulnerability Assessment Script"
     echo "================================================================================"
     echo ""
-
-    # 명령행 인자 파싱
-    parse_args "$@"
 
     # Root 권한 확인 (경고만)
     check_root
@@ -581,23 +760,19 @@ main() {
     echo "Starting security assessment..."
     echo ""
 
-    # 취약점 점검 실행
-    check_mx01
-    check_mx02
-    check_mx03
-    check_mx04
-    check_mx05
-    check_mx06
-    check_mx07
-    check_mx08
-    check_mx09
-    check_mx10
-    check_mx11
-    check_mx12
-    check_mx13
-    check_mx14
-    check_mx15
-    check_mx16
+    # 최신 2026 DBMS 기준 MySQL/MariaDB 취약점 점검 실행 (D-* codes)
+    check_d01
+    check_d02
+    check_d03
+    check_d04
+    check_d06
+    check_d07
+    check_d08
+    check_d10
+    check_d11
+    check_d14
+    check_d21
+    check_d25
 
     # 결과 요약
     echo "" >> "$RESULT_FILE"
