@@ -216,8 +216,6 @@ export MYSQL_PASSWORD="mypassword"
 ---
 
 
-> 최신 기준 원문 데이터는 KISA의 [주요정보통신기반시설 기술적 취약점 분석·평가 방법 상세가이드](https://www.kisa.or.kr/2060204/form?postSeq=22&page=1) 게시글(등록일: 2025-12-24)을 기준으로 합니다. 최신 PDF 기준 항목 매핑과 제거/신규 항목 목록은 [최신 상세가이드 기준 항목 매핑표](docs/latest_mapping_guide.md)를 참조하세요.
-
 ## 🚀 실행 예시
 
 ### Linux 취약점 점검 및 조치
@@ -390,8 +388,9 @@ Detail: [Risk: HIGH] DB remote access appears restricted
 
 ### 참고 자료
 
-이 프로젝트는 KISA(한국인터넷진흥원)의 주요정보통신기반시설 취약점 분석·평가 가이드를 기반으로 작성 및 최신화되었습니다.
+이 프로젝트는 KISA(한국인터넷진흥원)의 최신 주요정보통신기반시설 기술적 취약점 분석·평가 방법 상세가이드를 기준으로 작성 및 최신화되었습니다.
 
-- [KISA 주요정보통신기반시설 취약점 분석·평가 가이드](https://www.kisa.or.kr/2060204/form?postSeq=12&lang_type=KO&page=1)
+- [KISA 주요정보통신기반시설 기술적 취약점 분석·평가 방법 상세가이드](https://www.kisa.or.kr/2060204/form?postSeq=22&page=1) (등록일: 2025-12-24)
+- [최신 상세가이드 기준 항목 매핑표](docs/latest_mapping_guide.md): 최신 PDF 기준 항목 매핑 및 제거/신규 항목 목록
 
 ---
