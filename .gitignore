@@ -31,3 +31,5 @@ Thumbs.db
 release/
 release_notes.md
 
+# sample data
+*.pdf
