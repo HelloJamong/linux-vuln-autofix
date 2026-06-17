@@ -1,6 +1,7 @@
 # OMC (oh-my-claudecode) files
 .omc/
 .claude/
+/tasks/
 
 # Vulnerability check script results
 *_result.txt
