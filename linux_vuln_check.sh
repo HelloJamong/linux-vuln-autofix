@@ -137,7 +137,8 @@ check_os_environment() {
     fi
 
     # 버전 확인 (Rocky/RHEL 8.10 또는 9.x)
-    local major_version=$(echo "$VERSION_ID" | cut -d. -f1)
+    local major_version
+    major_version=$(echo "$VERSION_ID" | cut -d. -f1)
     OS_ID="${ID:-unknown}"
     OS_VERSION_ID="${VERSION_ID:-unknown}"
     OS_PRETTY_NAME="${PRETTY_NAME:-${NAME:-unknown}}"
@@ -309,7 +310,8 @@ check_u01() {
 
     # PermitRootLogin 설정 확인
     # 1. 주석이 아닌 활성 설정만 검색
-    local permit_root=$(grep -i "^[[:space:]]*PermitRootLogin" "$sshd_config" | grep -v "^[[:space:]]*#" | tail -1 | awk '{print tolower($2)}')
+    local permit_root
+    permit_root=$(grep -i "^[[:space:]]*PermitRootLogin" "$sshd_config" | grep -v "^[[:space:]]*#" | tail -1 | awk '{print tolower($2)}')
 
     if [ -z "$permit_root" ]; then
         # 설정이 없는 경우 (주석처리 또는 미설정)
@@ -341,7 +343,8 @@ check_u02() {
     local pass_details=""
 
     # 1. 최소 패스워드 길이 검사 (8자리 이상)
-    local minlen=$(grep -i "^[[:space:]]*minlen" "$pwquality_conf" | grep -v "^[[:space:]]*#" | tail -1 | awk -F= '{print $2}' | tr -d ' ')
+    local minlen
+    minlen=$(grep -i "^[[:space:]]*minlen" "$pwquality_conf" | grep -v "^[[:space:]]*#" | tail -1 | awk -F= '{print $2}' | tr -d ' ')
     if [ -n "$minlen" ] && [ "$minlen" -ge 8 ]; then
         pass_details="${pass_details}minlen=${minlen}, "
     else
@@ -350,7 +353,8 @@ check_u02() {
 
     # 2. 숫자 포함 검사 (dcredit)
     # dcredit = -1 이면 최소 1개의 숫자 필요
-    local dcredit=$(grep -i "^[[:space:]]*dcredit" "$pwquality_conf" | grep -v "^[[:space:]]*#" | tail -1 | awk -F= '{print $2}' | tr -d ' ')
+    local dcredit
+    dcredit=$(grep -i "^[[:space:]]*dcredit" "$pwquality_conf" | grep -v "^[[:space:]]*#" | tail -1 | awk -F= '{print $2}' | tr -d ' ')
     if [ -n "$dcredit" ] && [ "$dcredit" -lt 0 ]; then
         pass_details="${pass_details}digit required, "
     else
@@ -358,7 +362,8 @@ check_u02() {
     fi
 
     # 3. 영문 대문자 포함 검사 (ucredit)
-    local ucredit=$(grep -i "^[[:space:]]*ucredit" "$pwquality_conf" | grep -v "^[[:space:]]*#" | tail -1 | awk -F= '{print $2}' | tr -d ' ')
+    local ucredit
+    ucredit=$(grep -i "^[[:space:]]*ucredit" "$pwquality_conf" | grep -v "^[[:space:]]*#" | tail -1 | awk -F= '{print $2}' | tr -d ' ')
     if [ -n "$ucredit" ] && [ "$ucredit" -lt 0 ]; then
         pass_details="${pass_details}uppercase required, "
     else
@@ -366,7 +371,8 @@ check_u02() {
     fi
 
     # 4. 영문 소문자 포함 검사 (lcredit)
-    local lcredit=$(grep -i "^[[:space:]]*lcredit" "$pwquality_conf" | grep -v "^[[:space:]]*#" | tail -1 | awk -F= '{print $2}' | tr -d ' ')
+    local lcredit
+    lcredit=$(grep -i "^[[:space:]]*lcredit" "$pwquality_conf" | grep -v "^[[:space:]]*#" | tail -1 | awk -F= '{print $2}' | tr -d ' ')
     if [ -n "$lcredit" ] && [ "$lcredit" -lt 0 ]; then
         pass_details="${pass_details}lowercase required, "
     else
@@ -374,7 +380,8 @@ check_u02() {
     fi
 
     # 5. 특수문자 포함 검사 (ocredit)
-    local ocredit=$(grep -i "^[[:space:]]*ocredit" "$pwquality_conf" | grep -v "^[[:space:]]*#" | tail -1 | awk -F= '{print $2}' | tr -d ' ')
+    local ocredit
+    ocredit=$(grep -i "^[[:space:]]*ocredit" "$pwquality_conf" | grep -v "^[[:space:]]*#" | tail -1 | awk -F= '{print $2}' | tr -d ' ')
     if [ -n "$ocredit" ] && [ "$ocredit" -lt 0 ]; then
         pass_details="${pass_details}special char required"
     else
@@ -407,7 +414,8 @@ check_u03() {
     local pass_details=""
 
     # 조건1: root에게는 패스워드 잠금 설정을 적용하지 않음 (even_deny_root가 설정되지 않아야 함)
-    local even_deny_root=$(grep -i "^[[:space:]]*even_deny_root" "$faillock_conf" | grep -v "^[[:space:]]*#")
+    local even_deny_root
+    even_deny_root=$(grep -i "^[[:space:]]*even_deny_root" "$faillock_conf" | grep -v "^[[:space:]]*#")
     if [ -z "$even_deny_root" ]; then
         pass_details="${pass_details}root excluded from lockout, "
     else
@@ -415,7 +423,8 @@ check_u03() {
     fi
 
     # 조건2: 5회 입력 실패 시 패스워드 잠금 (deny = 5)
-    local deny=$(grep -i "^[[:space:]]*deny" "$faillock_conf" | grep -v "^[[:space:]]*#" | tail -1 | awk -F= '{print $2}' | tr -d ' ')
+    local deny
+    deny=$(grep -i "^[[:space:]]*deny" "$faillock_conf" | grep -v "^[[:space:]]*#" | tail -1 | awk -F= '{print $2}' | tr -d ' ')
     if [ -n "$deny" ] && [ "$deny" -eq 5 ]; then
         pass_details="${pass_details}deny=${deny}, "
     else
@@ -423,7 +432,8 @@ check_u03() {
     fi
 
     # 조건3: 계정 잠김 후 마지막 계정 실패 시간부터 120초가 지나면 자동 계정 잠김 해제 (unlock_time = 120)
-    local unlock_time=$(grep -i "^[[:space:]]*unlock_time" "$faillock_conf" | grep -v "^[[:space:]]*#" | tail -1 | awk -F= '{print $2}' | tr -d ' ')
+    local unlock_time
+    unlock_time=$(grep -i "^[[:space:]]*unlock_time" "$faillock_conf" | grep -v "^[[:space:]]*#" | tail -1 | awk -F= '{print $2}' | tr -d ' ')
     if [ -n "$unlock_time" ] && [ "$unlock_time" -eq 120 ]; then
         pass_details="${pass_details}unlock_time=${unlock_time}, "
     else
@@ -431,7 +441,8 @@ check_u03() {
     fi
 
     # 조건4: 접속 시도 성공 시 실패한 횟수 초기화 (reset_on_success 기본값이 true이므로 명시적으로 false가 아니면 양호)
-    local reset_on_success=$(grep -i "^[[:space:]]*reset_on_success" "$faillock_conf" | grep -v "^[[:space:]]*#" | tail -1 | awk -F= '{print $2}' | tr -d ' ')
+    local reset_on_success
+    reset_on_success=$(grep -i "^[[:space:]]*reset_on_success" "$faillock_conf" | grep -v "^[[:space:]]*#" | tail -1 | awk -F= '{print $2}' | tr -d ' ')
     # reset_on_success가 설정되지 않았거나 true로 설정된 경우 양호 (기본값이 true)
     if [ -z "$reset_on_success" ] || [ "$reset_on_success" == "true" ]; then
         pass_details="${pass_details}reset_on_success=true"
@@ -469,7 +480,8 @@ check_u04() {
 
     # 조건2: /etc/passwd 파일 내 두 번째 필드가 "x" 표시되는지 확인
     # 모든 계정의 두 번째 필드가 "x"인지 검사 (패스워드가 shadow 파일에 암호화되어 저장됨을 의미)
-    local invalid_entries=$(awk -F: '$2 != "x" {print $1}' "$passwd_file")
+    local invalid_entries
+    invalid_entries=$(awk -F: '$2 != "x" {print $1}' "$passwd_file")
 
     if [ -z "$invalid_entries" ]; then
         pass_details="${pass_details}all passwords are shadowed (field 2 = x)"
@@ -496,12 +508,15 @@ check_u05() {
     for config_file in "${config_files[@]}"; do
         if [ -f "$config_file" ]; then
             # PATH 설정 라인 추출 (export PATH= 또는 PATH= 형태)
-            local path_lines=$(grep -n "^[[:space:]]*\(export \)\?PATH=" "$config_file" | grep -v "^[[:space:]]*#")
+            local path_lines
+            path_lines=$(grep -n "^[[:space:]]*\(export \)\?PATH=" "$config_file" | grep -v "^[[:space:]]*#")
 
             if [ -n "$path_lines" ]; then
                 while IFS= read -r line; do
-                    local line_num=$(echo "$line" | cut -d: -f1)
-                    local path_value=$(echo "$line" | cut -d= -f2- | tr -d '"' | tr -d "'")
+                    local line_num
+                    line_num=$(echo "$line" | cut -d: -f1)
+                    local path_value
+                    path_value=$(echo "$line" | cut -d= -f2- | tr -d '"' | tr -d "'")
 
                     # PATH를 콜론으로 분리하여 배열로 변환
                     IFS=':' read -ra path_array <<< "$path_value"
@@ -566,16 +581,19 @@ check_u06() {
     # 소유자가 존재하지 않는 파일 및 디렉터리 검색
     # -nouser: UID가 /etc/passwd에 없는 파일
     # -nogroup: GID가 /etc/group에 없는 파일
-    local noowner_files=$(find / -nouser -o -nogroup 2>/dev/null | head -100)
+    local noowner_files
+    noowner_files=$(find / -nouser -o -nogroup 2>/dev/null | head -100)
 
     if [ -z "$noowner_files" ]; then
         log_result "$check_id" "$check_name" "PASS" "[Risk: ${risk_level}] No files or directories with non-existent owner found"
     else
         # 파일 개수 확인
-        local file_count=$(echo "$noowner_files" | wc -l)
+        local file_count
+        file_count=$(echo "$noowner_files" | wc -l)
 
         # 결과를 한 줄로 변환 (최대 10개만 표시)
-        local file_list=$(echo "$noowner_files" | head -10 | tr '\n' ', ' | sed 's/,$//')
+        local file_list
+        file_list=$(echo "$noowner_files" | head -10 | tr '\n' ', ' | sed 's/,$//')
 
         if [ "$file_count" -gt 10 ]; then
             file_list="${file_list} ... and $((file_count - 10)) more"
@@ -598,8 +616,10 @@ check_u07() {
         return
     fi
 
-    local owner=$(stat -c %U "$passwd_file")
-    local perm=$(stat -c %a "$passwd_file")
+    local owner
+    owner=$(stat -c %U "$passwd_file")
+    local perm
+    perm=$(stat -c %a "$passwd_file")
 
     local fail_reasons=""
 
@@ -633,8 +653,10 @@ check_u08() {
         return
     fi
 
-    local owner=$(stat -c %U "$shadow_file")
-    local perm=$(stat -c %a "$shadow_file")
+    local owner
+    owner=$(stat -c %U "$shadow_file")
+    local perm
+    perm=$(stat -c %a "$shadow_file")
 
     local fail_reasons=""
 
@@ -668,8 +690,10 @@ check_u09() {
         return
     fi
 
-    local owner=$(stat -c %U "$hosts_file")
-    local perm=$(stat -c %a "$hosts_file")
+    local owner
+    owner=$(stat -c %U "$hosts_file")
+    local perm
+    perm=$(stat -c %a "$hosts_file")
 
     local fail_reasons=""
 
@@ -707,8 +731,10 @@ check_u10() {
         return
     fi
 
-    local owner=$(stat -c %U "$inetd_file")
-    local perm=$(stat -c %a "$inetd_file")
+    local owner
+    owner=$(stat -c %U "$inetd_file")
+    local perm
+    perm=$(stat -c %a "$inetd_file")
 
     local fail_reasons=""
 
@@ -748,8 +774,10 @@ check_u11() {
         return
     fi
 
-    local owner=$(stat -c %U "$syslog_file")
-    local perm=$(stat -c %a "$syslog_file")
+    local owner
+    owner=$(stat -c %U "$syslog_file")
+    local perm
+    perm=$(stat -c %a "$syslog_file")
 
     local fail_reasons=""
 
@@ -783,8 +811,10 @@ check_u12() {
         return
     fi
 
-    local owner=$(stat -c %U "$services_file")
-    local perm=$(stat -c %a "$services_file")
+    local owner
+    owner=$(stat -c %U "$services_file")
+    local perm
+    perm=$(stat -c %a "$services_file")
 
     local fail_reasons=""
 
@@ -835,7 +865,8 @@ check_u13() {
     for file in "${critical_files[@]}"; do
         if [ -f "$file" ]; then
             # SUID(4000) 또는 SGID(2000) 비트가 설정되어 있는지 확인
-            local perm=$(stat -c %a "$file" 2>/dev/null)
+            local perm
+            perm=$(stat -c %a "$file" 2>/dev/null)
             if [ -n "$perm" ]; then
                 # 첫 번째 자리가 4(SUID), 2(SGID), 6(SUID+SGID)인지 확인
                 local first_digit=${perm:0:1}
@@ -852,7 +883,8 @@ check_u13() {
     else
         # 최대 10개까지만 표시
         if [ "$found_count" -gt 10 ]; then
-            local display_files=$(echo "$vulnerable_files" | cut -d',' -f1-10)
+            local display_files
+            display_files=$(echo "$vulnerable_files" | cut -d',' -f1-10)
             log_result "$check_id" "$check_name" "FAIL" "[Risk: ${risk_level}] Found ${found_count} files with SUID/SGID: ${display_files}, ... and $((found_count - 10)) more"
         else
             log_result "$check_id" "$check_name" "FAIL" "[Risk: ${risk_level}] Files with SUID/SGID: ${vulnerable_files}"
@@ -889,8 +921,10 @@ check_u14() {
                 local full_path="${homedir}/${env_file}"
 
                 if [ -f "$full_path" ]; then
-                    local owner=$(stat -c %U "$full_path" 2>/dev/null)
-                    local perm=$(stat -c %a "$full_path" 2>/dev/null)
+                    local owner
+                    owner=$(stat -c %U "$full_path" 2>/dev/null)
+                    local perm
+                    perm=$(stat -c %a "$full_path" 2>/dev/null)
 
                     # 조건1: 소유자가 root 또는 해당 계정인지 확인
                     if [[ "$owner" != "root" && "$owner" != "$username" ]]; then
@@ -923,7 +957,8 @@ check_u14() {
     else
         # 최대 10개까지만 표시
         if [ "$found_count" -gt 10 ]; then
-            local display_files=$(echo "$vulnerable_files" | cut -d',' -f1-10)
+            local display_files
+            display_files=$(echo "$vulnerable_files" | cut -d',' -f1-10)
             log_result "$check_id" "$check_name" "FAIL" "[Risk: ${risk_level}] Found ${found_count} files with improper owner/permissions: ${display_files}, ... and $((found_count - 10)) more"
         else
             log_result "$check_id" "$check_name" "FAIL" "[Risk: ${risk_level}] Files with improper owner/permissions: ${vulnerable_files}"
@@ -956,11 +991,13 @@ check_u15() {
     for path in "${critical_paths[@]}"; do
         if [ -d "$path" ]; then
             # world writable 파일 검색 (sticky bit가 있는 파일 제외)
-            local files=$(find "$path" -type f -perm -002 ! -perm -1000 2>/dev/null)
+            local files
+            files=$(find "$path" -type f -perm -002 ! -perm -1000 2>/dev/null)
 
             if [ -n "$files" ]; then
                 while IFS= read -r file; do
-                    local perm=$(stat -c %a "$file" 2>/dev/null)
+                    local perm
+                    perm=$(stat -c %a "$file" 2>/dev/null)
                     writable_files="${writable_files}${file}(${perm}), "
                     ((found_count++))
                 done <<< "$files"
@@ -973,7 +1010,8 @@ check_u15() {
     else
         # 최대 10개까지만 표시
         if [ "$found_count" -gt 10 ]; then
-            local display_files=$(echo "$writable_files" | cut -d',' -f1-10)
+            local display_files
+            display_files=$(echo "$writable_files" | cut -d',' -f1-10)
             log_result "$check_id" "$check_name" "FAIL" "[Risk: ${risk_level}] Found ${found_count} world writable files: ${display_files}, ... and $((found_count - 10)) more"
         else
             log_result "$check_id" "$check_name" "FAIL" "[Risk: ${risk_level}] World writable files: ${writable_files}"
@@ -994,13 +1032,16 @@ check_u16() {
     fi
 
     # 일반 파일 형태의 디바이스 파일 검색 (정상적인 디바이스 파일은 블록/문자 디바이스여야 함)
-    local unusual_files=$(find /dev -type f 2>/dev/null | head -20)
+    local unusual_files
+    unusual_files=$(find /dev -type f 2>/dev/null | head -20)
 
     if [ -z "$unusual_files" ]; then
         log_result "$check_id" "$check_name" "PASS" "[Risk: ${risk_level}] No unusual device files found"
     else
-        local file_count=$(echo "$unusual_files" | wc -l)
-        local file_list=$(echo "$unusual_files" | head -10 | tr '\n' ', ' | sed 's/,$//')
+        local file_count
+        file_count=$(echo "$unusual_files" | wc -l)
+        local file_list
+        file_list=$(echo "$unusual_files" | head -10 | tr '\n' ', ' | sed 's/,$//')
 
         if [ "$file_count" -gt 10 ]; then
             file_list="${file_list} ... and $((file_count - 10)) more"
@@ -1049,7 +1090,8 @@ check_u18() {
     local risk_level="HIGH"
 
     # 열려있는 포트 확인
-    local listening_ports=$(ss -tulpen 2>/dev/null | grep LISTEN | wc -l)
+    local listening_ports
+    listening_ports=$(ss -tulpen 2>/dev/null | grep LISTEN | wc -l)
 
     if [ -z "$listening_ports" ] || [ "$listening_ports" -eq 0 ]; then
         log_result "$check_id" "$check_name" "PASS" "[Risk: ${risk_level}] No listening ports found"
@@ -1067,7 +1109,8 @@ check_u18() {
 
     if [ "$firewall_active" == false ]; then
         if command -v iptables &>/dev/null; then
-            local iptables_rules=$(iptables -L -n 2>/dev/null | grep -v "^Chain\|^target" | wc -l)
+            local iptables_rules
+            iptables_rules=$(iptables -L -n 2>/dev/null | grep -v "^Chain\|^target" | wc -l)
             if [ "$iptables_rules" -gt 0 ]; then
                 firewall_active=true
             fi
@@ -1123,7 +1166,8 @@ check_u20() {
     fi
 
     # anonymous_enable 설정 확인
-    local anon_enabled=$(grep -i "^[[:space:]]*anonymous_enable" "$vsftpd_conf" | grep -v "^[[:space:]]*#" | tail -1 | awk -F= '{print tolower($2)}' | tr -d ' ')
+    local anon_enabled
+    anon_enabled=$(grep -i "^[[:space:]]*anonymous_enable" "$vsftpd_conf" | grep -v "^[[:space:]]*#" | tail -1 | awk -F= '{print tolower($2)}' | tr -d ' ')
 
     if [ -z "$anon_enabled" ] || [ "$anon_enabled" == "no" ]; then
         log_result "$check_id" "$check_name" "PASS" "[Risk: ${risk_level}] Anonymous FTP is disabled"
@@ -1144,7 +1188,8 @@ check_u21() {
 
     for service in "${r_services[@]}"; do
         if command -v systemctl &>/dev/null; then
-            local status=$(systemctl is-enabled "$service" 2>/dev/null)
+            local status
+            status=$(systemctl is-enabled "$service" 2>/dev/null)
             if [ "$status" == "enabled" ]; then
                 enabled_services="${enabled_services}${service}, "
                 ((enabled_count++))
@@ -1172,8 +1217,10 @@ check_u22() {
         return
     fi
 
-    local owner=$(stat -c %U "$cron_file")
-    local perm=$(stat -c %a "$cron_file")
+    local owner
+    owner=$(stat -c %U "$cron_file")
+    local perm
+    perm=$(stat -c %a "$cron_file")
 
     local fail_reasons=""
 
@@ -1206,7 +1253,8 @@ check_u23() {
 
     for service in "${vulnerable_services[@]}"; do
         if command -v systemctl &>/dev/null; then
-            local status=$(systemctl is-enabled "$service" 2>/dev/null)
+            local status
+            status=$(systemctl is-enabled "$service" 2>/dev/null)
             if [ "$status" == "enabled" ]; then
                 enabled_services="${enabled_services}${service}, "
                 ((enabled_count++))
@@ -1218,7 +1266,8 @@ check_u23() {
     if [ -d "/etc/xinetd.d" ]; then
         for service in "${vulnerable_services[@]}"; do
             if [ -f "/etc/xinetd.d/$service" ]; then
-                local disabled=$(grep "disable.*=.*yes" "/etc/xinetd.d/$service" 2>/dev/null)
+                local disabled
+                disabled=$(grep "disable.*=.*yes" "/etc/xinetd.d/$service" 2>/dev/null)
                 if [ -z "$disabled" ]; then
                     enabled_services="${enabled_services}xinetd:${service}, "
                     ((enabled_count++))
@@ -1250,7 +1299,8 @@ check_u24() {
         log_result "$check_id" "$check_name" "PASS" "[Risk: ${risk_level}] NFS service is disabled or not installed"
     else
         # NFS가 활성화된 경우, 사용 중인지 확인
-        local nfs_exports=$(cat /etc/exports 2>/dev/null | grep -v "^#" | grep -v "^$")
+        local nfs_exports
+        nfs_exports=$(cat /etc/exports 2>/dev/null | grep -v "^#" | grep -v "^$")
         if [ -n "$nfs_exports" ]; then
             log_result "$check_id" "$check_name" "FAIL" "[Risk: ${risk_level}] NFS service is ${nfs_status} and in use"
         else
@@ -1273,7 +1323,8 @@ check_u25() {
     fi
 
     # 활성 설정 라인 추출 (주석 제외)
-    local active_exports=$(grep -v "^#" "$exports_file" | grep -v "^$")
+    local active_exports
+    active_exports=$(grep -v "^#" "$exports_file" | grep -v "^$")
 
     if [ -z "$active_exports" ]; then
         log_result "$check_id" "$check_name" "PASS" "[Risk: ${risk_level}] No NFS exports configured"
@@ -1281,7 +1332,8 @@ check_u25() {
     fi
 
     # everyone 접근 허용 여부 확인 (*, 0.0.0.0 등)
-    local insecure_exports=$(echo "$active_exports" | grep -E '\*|0\.0\.0\.0|everyone')
+    local insecure_exports
+    insecure_exports=$(echo "$active_exports" | grep -E '\*|0\.0\.0\.0|everyone')
 
     if [ -z "$insecure_exports" ]; then
         log_result "$check_id" "$check_name" "PASS" "[Risk: ${risk_level}] NFS exports have proper access control"
@@ -1325,7 +1377,8 @@ check_u27() {
     if [ "$rpcbind_status" == "active" ]; then
         # RPC 서비스가 실행 중인 경우 rpcinfo로 확인
         if command -v rpcinfo &>/dev/null; then
-            local rpc_services=$(rpcinfo -p 2>/dev/null | wc -l)
+            local rpc_services
+            rpc_services=$(rpcinfo -p 2>/dev/null | wc -l)
             if [ "$rpc_services" -gt 0 ]; then
                 log_result "$check_id" "$check_name" "FAIL" "[Risk: ${risk_level}] RPC services are running (${rpc_services} services found)"
             else
@@ -1351,7 +1404,8 @@ check_u28() {
 
     for service in "${nis_services[@]}"; do
         if command -v systemctl &>/dev/null; then
-            local status=$(systemctl is-enabled "$service" 2>/dev/null)
+            local status
+            status=$(systemctl is-enabled "$service" 2>/dev/null)
             if [ "$status" == "enabled" ]; then
                 enabled_services="${enabled_services}${service}, "
                 ((enabled_count++))
@@ -1378,7 +1432,8 @@ check_u29() {
 
     for service in "${services[@]}"; do
         if command -v systemctl &>/dev/null; then
-            local status=$(systemctl is-enabled "$service" 2>/dev/null)
+            local status
+            status=$(systemctl is-enabled "$service" 2>/dev/null)
             if [ "$status" == "enabled" ]; then
                 enabled_services="${enabled_services}${service}, "
                 ((enabled_count++))
@@ -1406,7 +1461,8 @@ check_u30() {
     fi
 
     # sendmail 버전 확인
-    local sendmail_version=$(sendmail -d0.1 -bv root 2>&1 | grep "Version" | head -1)
+    local sendmail_version
+    sendmail_version=$(sendmail -d0.1 -bv root 2>&1 | grep "Version" | head -1)
 
     if [ -n "$sendmail_version" ]; then
         # 취약 버전인지 확인 (8.12.0 미만 버전은 취약)
@@ -1440,13 +1496,15 @@ check_u31() {
     fi
 
     if [ -f "$sendmail_cf" ]; then
-        local relay_cf=$(grep -i "R.*Relaying" "$sendmail_cf" 2>/dev/null)
+        local relay_cf
+        relay_cf=$(grep -i "R.*Relaying" "$sendmail_cf" 2>/dev/null)
         relay_config="${relay_config}${relay_cf}"
     fi
 
     # access 파일 확인
     if [ -f "/etc/mail/access" ]; then
-        local relay_access=$(grep -i "relay" "/etc/mail/access" 2>/dev/null | grep -v "^#")
+        local relay_access
+        relay_access=$(grep -i "relay" "/etc/mail/access" 2>/dev/null | grep -v "^#")
         if [ -n "$relay_access" ]; then
             log_result "$check_id" "$check_name" "PASS" "[Risk: ${risk_level}] Mail relay restrictions are configured"
             return
@@ -1478,8 +1536,10 @@ check_u32() {
         sendmail_path="/usr/lib/sendmail"
     fi
 
-    local owner=$(stat -c %U "$sendmail_path" 2>/dev/null)
-    local perm=$(stat -c %a "$sendmail_path" 2>/dev/null)
+    local owner
+    owner=$(stat -c %U "$sendmail_path" 2>/dev/null)
+    local perm
+    perm=$(stat -c %a "$sendmail_path" 2>/dev/null)
 
     local fail_reasons=""
 
@@ -1513,7 +1573,8 @@ check_u33() {
         return
     fi
 
-    local named_version=$(named -v 2>/dev/null | head -1)
+    local named_version
+    named_version=$(named -v 2>/dev/null | head -1)
 
     if [ -n "$named_version" ]; then
         log_result "$check_id" "$check_name" "PASS" "[Risk: ${risk_level}] DNS version: ${named_version} (manual verification required)"
@@ -1536,11 +1597,13 @@ check_u34() {
     fi
 
     # allow-transfer 설정 확인
-    local allow_transfer=$(grep -i "allow-transfer" "$named_conf" 2>/dev/null | grep -v "^[[:space:]]*//")
+    local allow_transfer
+    allow_transfer=$(grep -i "allow-transfer" "$named_conf" 2>/dev/null | grep -v "^[[:space:]]*//")
 
     if [ -n "$allow_transfer" ]; then
         # any나 0.0.0.0이 포함되어 있는지 확인
-        local insecure=$(echo "$allow_transfer" | grep -E "any|0\.0\.0\.0")
+        local insecure
+        insecure=$(echo "$allow_transfer" | grep -E "any|0\.0\.0\.0")
         if [ -n "$insecure" ]; then
             log_result "$check_id" "$check_name" "FAIL" "[Risk: ${risk_level}] Zone transfer allows unrestricted access"
         else
@@ -1566,10 +1629,12 @@ check_u35() {
         if [ -f "$config" ]; then
             config_found=true
             # Indexes 옵션 확인
-            local indexes=$(grep -i "Options.*Indexes" "$config" 2>/dev/null | grep -v "^[[:space:]]*#")
+            local indexes
+            indexes=$(grep -i "Options.*Indexes" "$config" 2>/dev/null | grep -v "^[[:space:]]*#")
             if [ -n "$indexes" ]; then
                 # -Indexes가 아닌 Indexes가 있는지 확인
-                local positive_indexes=$(echo "$indexes" | grep -v "\-Indexes")
+                local positive_indexes
+                positive_indexes=$(echo "$indexes" | grep -v "\-Indexes")
                 if [ -n "$positive_indexes" ]; then
                     indexes_enabled=true
                 fi
@@ -1581,9 +1646,11 @@ check_u35() {
     for conf_dir in "/etc/httpd/conf.d" "/etc/apache2/conf.d" "/etc/apache2/sites-enabled"; do
         if [ -d "$conf_dir" ]; then
             config_found=true
-            local indexes=$(grep -ri "Options.*Indexes" "$conf_dir" 2>/dev/null | grep -v "^[[:space:]]*#" | grep -v ".conf:#")
+            local indexes
+            indexes=$(grep -ri "Options.*Indexes" "$conf_dir" 2>/dev/null | grep -v "^[[:space:]]*#" | grep -v ".conf:#")
             if [ -n "$indexes" ]; then
-                local positive_indexes=$(echo "$indexes" | grep -v "\-Indexes")
+                local positive_indexes
+                positive_indexes=$(echo "$indexes" | grep -v "\-Indexes")
                 if [ -n "$positive_indexes" ]; then
                     indexes_enabled=true
                 fi
@@ -1607,7 +1674,8 @@ check_u36() {
     local risk_level="HIGH"
 
     # 실행 중인 웹 서버 프로세스 확인
-    local web_processes=$(ps -ef | grep -E "httpd|apache2|nginx" | grep -v grep)
+    local web_processes
+    web_processes=$(ps -ef | grep -E "httpd|apache2|nginx" | grep -v grep)
 
     if [ -z "$web_processes" ]; then
         log_result "$check_id" "$check_name" "N/A" "[Risk: ${risk_level}] No web server processes running"
@@ -1615,8 +1683,10 @@ check_u36() {
     fi
 
     # root로 실행되는 웹 프로세스 확인 (마스터 프로세스 제외)
-    local root_workers=$(ps -ef | grep -E "httpd|apache2|nginx" | grep -v grep | grep -v "^root" | wc -l)
-    local root_processes=$(ps -ef | grep -E "httpd|apache2|nginx" | grep -v grep | grep "^root" | wc -l)
+    local root_workers
+    root_workers=$(ps -ef | grep -E "httpd|apache2|nginx" | grep -v grep | grep -v "^root" | wc -l)
+    local root_processes
+    root_processes=$(ps -ef | grep -E "httpd|apache2|nginx" | grep -v grep | grep "^root" | wc -l)
 
     # worker 프로세스가 non-root로 실행되는지 확인
     if [ "$root_workers" -gt 0 ]; then
@@ -1643,7 +1713,8 @@ check_u37() {
         if [ -f "$config" ]; then
             config_found=true
             # AllowOverride All 설정 확인 (상위 디렉토리 접근 가능)
-            local allowoverride=$(grep -i "AllowOverride.*All" "$config" 2>/dev/null | grep -v "^[[:space:]]*#")
+            local allowoverride
+            allowoverride=$(grep -i "AllowOverride.*All" "$config" 2>/dev/null | grep -v "^[[:space:]]*#")
             if [ -n "$allowoverride" ]; then
                 allowoverride_all=true
             fi
@@ -1672,7 +1743,8 @@ check_u38() {
     for web_dir in "${web_dirs[@]}"; do
         if [ -d "$web_dir" ]; then
             # 매뉴얼, 샘플 파일 확인
-            local manual_files=$(find "$web_dir" -type d -name "manual" -o -name "doc" -o -name "example" 2>/dev/null | head -10)
+            local manual_files
+            manual_files=$(find "$web_dir" -type d -name "manual" -o -name "doc" -o -name "example" 2>/dev/null | head -10)
             if [ -n "$manual_files" ]; then
                 found_manual=true
                 manual_dir="${manual_dir}$(echo "$manual_files" | tr '\n' ', ')"
@@ -1701,10 +1773,12 @@ check_u39() {
         if [ -f "$config" ]; then
             config_found=true
             # FollowSymLinks 옵션 확인
-            local symlinks=$(grep -i "Options.*FollowSymLinks" "$config" 2>/dev/null | grep -v "^[[:space:]]*#")
+            local symlinks
+            symlinks=$(grep -i "Options.*FollowSymLinks" "$config" 2>/dev/null | grep -v "^[[:space:]]*#")
             if [ -n "$symlinks" ]; then
                 # -FollowSymLinks가 아닌 FollowSymLinks가 있는지 확인
-                local positive_symlinks=$(echo "$symlinks" | grep -v "\-FollowSymLinks" | grep "FollowSymLinks")
+                local positive_symlinks
+                positive_symlinks=$(echo "$symlinks" | grep -v "\-FollowSymLinks" | grep "FollowSymLinks")
                 if [ -n "$positive_symlinks" ]; then
                     followsymlinks_enabled=true
                 fi
@@ -1735,7 +1809,8 @@ check_u40() {
         if [ -f "$config" ]; then
             config_found=true
             # LimitRequestBody 설정 확인
-            local limit=$(grep -i "LimitRequestBody" "$config" 2>/dev/null | grep -v "^[[:space:]]*#")
+            local limit
+            limit=$(grep -i "LimitRequestBody" "$config" 2>/dev/null | grep -v "^[[:space:]]*#")
             if [ -n "$limit" ]; then
                 limit_set=true
             fi
@@ -1746,7 +1821,8 @@ check_u40() {
     for conf_dir in "/etc/httpd/conf.d" "/etc/apache2/conf.d"; do
         if [ -d "$conf_dir" ]; then
             config_found=true
-            local limit=$(grep -ri "LimitRequestBody" "$conf_dir" 2>/dev/null | grep -v "^[[:space:]]*#")
+            local limit
+            limit=$(grep -ri "LimitRequestBody" "$conf_dir" 2>/dev/null | grep -v "^[[:space:]]*#")
             if [ -n "$limit" ]; then
                 limit_set=true
             fi
@@ -1775,7 +1851,8 @@ check_u41() {
     for web_dir in "${web_dirs[@]}"; do
         if [ -d "$web_dir" ]; then
             # 해당 디렉토리가 별도 마운트 포인트인지 확인
-            local mount_point=$(df "$web_dir" 2>/dev/null | tail -1 | awk '{print $6}')
+            local mount_point
+            mount_point=$(df "$web_dir" 2>/dev/null | tail -1 | awk '{print $6}')
             if [ "$mount_point" == "$web_dir" ] || [ "$mount_point" == "/var" ]; then
                 separate_partition=true
                 log_result "$check_id" "$check_name" "PASS" "[Risk: ${risk_level}] Web directory is on separate partition: ${mount_point}"
@@ -1794,8 +1871,10 @@ check_u42() {
     local risk_level="HIGH"
 
     # 시스템 정보 확인
-    local kernel_version=$(uname -r)
-    local os_version=$(cat /etc/redhat-release 2>/dev/null || echo "Unknown")
+    local kernel_version
+    kernel_version=$(uname -r)
+    local os_version
+    os_version=$(cat /etc/redhat-release 2>/dev/null || echo "Unknown")
 
     # 마지막 업데이트 확인
     local last_update=""
@@ -1832,8 +1911,10 @@ check_u43() {
     for log_file in "${log_files[@]}"; do
         if [ -f "$log_file" ]; then
             ((logs_found++))
-            local log_size=$(du -h "$log_file" 2>/dev/null | awk '{print $1}')
-            local log_modified=$(stat -c %y "$log_file" 2>/dev/null | cut -d' ' -f1)
+            local log_size
+            log_size=$(du -h "$log_file" 2>/dev/null | awk '{print $1}')
+            local log_modified
+            log_modified=$(stat -c %y "$log_file" 2>/dev/null | cut -d' ' -f1)
             logs_detail="${logs_detail}${log_file}(${log_size}, modified:${log_modified}), "
         fi
     done
@@ -1858,7 +1939,8 @@ check_u44() {
     local risk_level="HIGH"
 
     # UID가 0인 계정 확인 (root 제외)
-    local uid_zero_accounts=$(awk -F: '$3==0 && $1!="root" {print $1}' /etc/passwd)
+    local uid_zero_accounts
+    uid_zero_accounts=$(awk -F: '$3==0 && $1!="root" {print $1}' /etc/passwd)
 
     if [ -z "$uid_zero_accounts" ]; then
         log_result "$check_id" "$check_name" "PASS" "[Risk: ${risk_level}] No non-root accounts with UID 0"
@@ -1881,11 +1963,13 @@ check_u45() {
     fi
 
     # pam_wheel 모듈 설정 확인
-    local wheel_config=$(grep "pam_wheel" "$pam_su" | grep -v "^[[:space:]]*#")
+    local wheel_config
+    wheel_config=$(grep "pam_wheel" "$pam_su" | grep -v "^[[:space:]]*#")
 
     if [ -n "$wheel_config" ]; then
         # wheel 그룹 설정이 있는 경우
-        local wheel_required=$(echo "$wheel_config" | grep "use_uid")
+        local wheel_required
+        wheel_required=$(echo "$wheel_config" | grep "use_uid")
         if [ -n "$wheel_required" ]; then
             log_result "$check_id" "$check_name" "PASS" "[Risk: ${risk_level}] su command is restricted to wheel group"
         else
@@ -1910,7 +1994,8 @@ check_u46() {
     fi
 
     # 최소 패스워드 길이 검사 (8자리 이상)
-    local minlen=$(grep -i "^[[:space:]]*minlen" "$pwquality_conf" | grep -v "^[[:space:]]*#" | tail -1 | awk -F= '{print $2}' | tr -d ' ')
+    local minlen
+    minlen=$(grep -i "^[[:space:]]*minlen" "$pwquality_conf" | grep -v "^[[:space:]]*#" | tail -1 | awk -F= '{print $2}' | tr -d ' ')
 
     if [ -n "$minlen" ] && [ "$minlen" -ge 8 ]; then
         log_result "$check_id" "$check_name" "PASS" "[Risk: ${risk_level}] Minimum password length is ${minlen}"
@@ -1933,7 +2018,8 @@ check_u47() {
     fi
 
     # PASS_MAX_DAYS 설정 확인
-    local pass_max_days=$(grep "^[[:space:]]*PASS_MAX_DAYS" "$login_defs" | grep -v "^[[:space:]]*#" | awk '{print $2}')
+    local pass_max_days
+    pass_max_days=$(grep "^[[:space:]]*PASS_MAX_DAYS" "$login_defs" | grep -v "^[[:space:]]*#" | awk '{print $2}')
 
     if [ -n "$pass_max_days" ] && [ "$pass_max_days" -le 90 ] && [ "$pass_max_days" -gt 0 ]; then
         log_result "$check_id" "$check_name" "PASS" "[Risk: ${risk_level}] Password max age is ${pass_max_days} days"
@@ -1956,7 +2042,8 @@ check_u48() {
     fi
 
     # PASS_MIN_DAYS 설정 확인
-    local pass_min_days=$(grep "^[[:space:]]*PASS_MIN_DAYS" "$login_defs" | grep -v "^[[:space:]]*#" | awk '{print $2}')
+    local pass_min_days
+    pass_min_days=$(grep "^[[:space:]]*PASS_MIN_DAYS" "$login_defs" | grep -v "^[[:space:]]*#" | awk '{print $2}')
 
     if [ -n "$pass_min_days" ] && [ "$pass_min_days" -ge 1 ]; then
         log_result "$check_id" "$check_name" "PASS" "[Risk: ${risk_level}] Password min age is ${pass_min_days} days"
@@ -1979,9 +2066,11 @@ check_u49() {
     local system_accounts=("lp" "news" "uucp" "games" "gopher")
 
     for account in "${system_accounts[@]}"; do
-        local account_info=$(grep "^${account}:" /etc/passwd 2>/dev/null)
+        local account_info
+        account_info=$(grep "^${account}:" /etc/passwd 2>/dev/null)
         if [ -n "$account_info" ]; then
-            local shell=$(echo "$account_info" | cut -d: -f7)
+            local shell
+            shell=$(echo "$account_info" | cut -d: -f7)
             # 로그인 가능한 쉘이 설정되어 있는지 확인
             if [[ "$shell" != "/sbin/nologin" && "$shell" != "/bin/false" && "$shell" != "/usr/sbin/nologin" ]]; then
                 unnecessary_accounts="${unnecessary_accounts}${account}(shell:${shell}), "
@@ -2004,12 +2093,14 @@ check_u50() {
     local risk_level="MEDIUM"
 
     # wheel 그룹 확인
-    local wheel_members=$(getent group wheel 2>/dev/null | cut -d: -f4)
+    local wheel_members
+    wheel_members=$(getent group wheel 2>/dev/null | cut -d: -f4)
 
     if [ -z "$wheel_members" ]; then
         log_result "$check_id" "$check_name" "PASS" "[Risk: ${risk_level}] No users in wheel group"
     else
-        local member_count=$(echo "$wheel_members" | tr ',' '\n' | wc -l)
+        local member_count
+        member_count=$(echo "$wheel_members" | tr ',' '\n' | wc -l)
         log_result "$check_id" "$check_name" "PASS" "[Risk: ${risk_level}] Wheel group members (${member_count}): ${wheel_members} (verify if necessary)"
     fi
 }
@@ -2046,14 +2137,16 @@ check_u52() {
     local risk_level="MEDIUM"
 
     # 중복된 UID 확인
-    local duplicate_uids=$(awk -F: '{print $3}' /etc/passwd | sort | uniq -d)
+    local duplicate_uids
+    duplicate_uids=$(awk -F: '{print $3}' /etc/passwd | sort | uniq -d)
 
     if [ -z "$duplicate_uids" ]; then
         log_result "$check_id" "$check_name" "PASS" "[Risk: ${risk_level}] No duplicate UIDs found"
     else
         local dup_details=""
         for uid in $duplicate_uids; do
-            local users=$(awk -F: -v uid="$uid" '$3==uid {print $1}' /etc/passwd | tr '\n' ',' | sed 's/,$//')
+            local users
+            users=$(awk -F: -v uid="$uid" '$3==uid {print $1}' /etc/passwd | tr '\n' ',' | sed 's/,$//')
             dup_details="${dup_details}UID ${uid}(${users}), "
         done
         log_result "$check_id" "$check_name" "FAIL" "[Risk: ${risk_level}] Duplicate UIDs found: ${dup_details}"
@@ -2108,7 +2201,8 @@ check_u54() {
 
     for config in "${config_files[@]}"; do
         if [ -f "$config" ]; then
-            local tmout=$(grep "^[[:space:]]*TMOUT=" "$config" | grep -v "^[[:space:]]*#" | tail -1)
+            local tmout
+            tmout=$(grep "^[[:space:]]*TMOUT=" "$config" | grep -v "^[[:space:]]*#" | tail -1)
             if [ -n "$tmout" ]; then
                 tmout_set=true
                 tmout_value=$(echo "$tmout" | cut -d= -f2 | tr -d ' ' | tr -d ';')
@@ -2142,8 +2236,10 @@ check_u55() {
         return
     fi
 
-    local owner=$(stat -c %U "$hosts_lpd")
-    local perm=$(stat -c %a "$hosts_lpd")
+    local owner
+    owner=$(stat -c %U "$hosts_lpd")
+    local perm
+    perm=$(stat -c %a "$hosts_lpd")
 
     local fail_reasons=""
 
@@ -2176,7 +2272,8 @@ check_u56() {
 
     for config in "${config_files[@]}"; do
         if [ -f "$config" ]; then
-            local umask_line=$(grep "^[[:space:]]*umask" "$config" | grep -v "^[[:space:]]*#" | tail -1)
+            local umask_line
+            umask_line=$(grep "^[[:space:]]*umask" "$config" | grep -v "^[[:space:]]*#" | tail -1)
             if [ -n "$umask_line" ]; then
                 umask_set=true
                 umask_value=$(echo "$umask_line" | awk '{print $2}')
@@ -2209,8 +2306,10 @@ check_u57() {
     # 일반 사용자 홈 디렉토리 검사 (UID >= 1000)
     while IFS=: read -r username _ uid _ _ homedir _; do
         if [ "$uid" -ge 1000 ] && [ -d "$homedir" ]; then
-            local owner=$(stat -c %U "$homedir" 2>/dev/null)
-            local perm=$(stat -c %a "$homedir" 2>/dev/null)
+            local owner
+            owner=$(stat -c %U "$homedir" 2>/dev/null)
+            local perm
+            perm=$(stat -c %a "$homedir" 2>/dev/null)
 
             # 소유자가 사용자 본인인지 확인
             if [ "$owner" != "$username" ]; then
@@ -2279,11 +2378,13 @@ check_u59() {
     while IFS=: read -r username _ uid _ _ homedir _; do
         if [ "$uid" -ge 1000 ] && [ -d "$homedir" ]; then
             # 숨김 파일 찾기
-            local hidden_files=$(find "$homedir" -maxdepth 1 -name ".*" -type f 2>/dev/null)
+            local hidden_files
+            hidden_files=$(find "$homedir" -maxdepth 1 -name ".*" -type f 2>/dev/null)
 
             if [ -n "$hidden_files" ]; then
                 while IFS= read -r file; do
-                    local basename=$(basename "$file")
+                    local basename
+                    basename=$(basename "$file")
                     # 정상 파일 목록에 없는 경우
                     if ! echo "$normal_hidden" | grep -q "$basename"; then
                         if [ "$count" -lt 10 ]; then
@@ -2320,8 +2421,10 @@ check_u60() {
     fi
 
     # AllowUsers 또는 AllowGroups 설정 확인
-    local allow_users=$(grep -i "^[[:space:]]*AllowUsers" "$sshd_config" | grep -v "^[[:space:]]*#")
-    local allow_groups=$(grep -i "^[[:space:]]*AllowGroups" "$sshd_config" | grep -v "^[[:space:]]*#")
+    local allow_users
+    allow_users=$(grep -i "^[[:space:]]*AllowUsers" "$sshd_config" | grep -v "^[[:space:]]*#")
+    local allow_groups
+    allow_groups=$(grep -i "^[[:space:]]*AllowGroups" "$sshd_config" | grep -v "^[[:space:]]*#")
 
     if [ -n "$allow_users" ] || [ -n "$allow_groups" ]; then
         log_result "$check_id" "$check_name" "PASS" "[Risk: ${risk_level}] SSH access is restricted (AllowUsers/AllowGroups configured)"
@@ -2342,7 +2445,8 @@ check_u61() {
 
     for service in "${ftp_services[@]}"; do
         if command -v systemctl &>/dev/null; then
-            local status=$(systemctl is-enabled "$service" 2>/dev/null)
+            local status
+            status=$(systemctl is-enabled "$service" 2>/dev/null)
             if [ "$status" == "enabled" ]; then
                 enabled_services="${enabled_services}${service}, "
                 ((enabled_count++))
@@ -2364,14 +2468,16 @@ check_u62() {
     local risk_level="MEDIUM"
 
     # ftp 계정 확인
-    local ftp_account=$(grep "^ftp:" /etc/passwd 2>/dev/null)
+    local ftp_account
+    ftp_account=$(grep "^ftp:" /etc/passwd 2>/dev/null)
 
     if [ -z "$ftp_account" ]; then
         log_result "$check_id" "$check_name" "N/A" "[Risk: ${risk_level}] FTP account does not exist"
         return
     fi
 
-    local ftp_shell=$(echo "$ftp_account" | cut -d: -f7)
+    local ftp_shell
+    ftp_shell=$(echo "$ftp_account" | cut -d: -f7)
 
     if [[ "$ftp_shell" == "/sbin/nologin" || "$ftp_shell" == "/bin/false" || "$ftp_shell" == "/usr/sbin/nologin" ]]; then
         log_result "$check_id" "$check_name" "PASS" "[Risk: ${risk_level}] FTP account shell is ${ftp_shell}"
@@ -2403,8 +2509,10 @@ check_u63() {
         return
     fi
 
-    local owner=$(stat -c %U "$ftpusers_file")
-    local perm=$(stat -c %a "$ftpusers_file")
+    local owner
+    owner=$(stat -c %U "$ftpusers_file")
+    local perm
+    perm=$(stat -c %a "$ftpusers_file")
 
     local fail_reasons=""
 
@@ -2449,7 +2557,8 @@ check_u64() {
     fi
 
     # root 계정이 포함되어 있는지 확인
-    local root_blocked=$(grep "^root$" "$ftpusers_file" 2>/dev/null)
+    local root_blocked
+    root_blocked=$(grep "^root$" "$ftpusers_file" 2>/dev/null)
 
     if [ -n "$root_blocked" ]; then
         log_result "$check_id" "$check_name" "PASS" "[Risk: ${risk_level}] root account is blocked in ftpusers"
@@ -2472,8 +2581,10 @@ check_u65() {
     for at_file in "${at_files[@]}"; do
         if [ -f "$at_file" ]; then
             file_checked=true
-            local owner=$(stat -c %U "$at_file")
-            local perm=$(stat -c %a "$at_file")
+            local owner
+            owner=$(stat -c %U "$at_file")
+            local perm
+            perm=$(stat -c %a "$at_file")
 
             # 소유자가 root인지, 권한이 640 이하인지 확인
             if [ "$owner" != "root" ] || [ "$perm" -gt 640 ]; then
@@ -2525,7 +2636,8 @@ check_u67() {
     fi
 
     # community string 확인
-    local community=$(grep -i "^[[:space:]]*community" "$snmpd_conf" | grep -v "^[[:space:]]*#")
+    local community
+    community=$(grep -i "^[[:space:]]*community" "$snmpd_conf" | grep -v "^[[:space:]]*#")
 
     if [ -z "$community" ]; then
         log_result "$check_id" "$check_name" "PASS" "[Risk: ${risk_level}] No community string configured"
@@ -2533,7 +2645,8 @@ check_u67() {
     fi
 
     # 기본 community string (public, private) 사용 여부 확인
-    local default_community=$(echo "$community" | grep -iE "public|private")
+    local default_community
+    default_community=$(echo "$community" | grep -iE "public|private")
 
     if [ -n "$default_community" ]; then
         log_result "$check_id" "$check_name" "FAIL" "[Risk: ${risk_level}] Default community string (public/private) is used"
@@ -2553,7 +2666,8 @@ check_u68() {
 
     for msg_file in "${message_files[@]}"; do
         if [ -f "$msg_file" ]; then
-            local content=$(cat "$msg_file" 2>/dev/null | grep -v "^$")
+            local content
+            content=$(cat "$msg_file" 2>/dev/null | grep -v "^$")
             if [ -n "$content" ]; then
                 message_found=true
                 break
@@ -2581,8 +2695,10 @@ check_u69() {
         return
     fi
 
-    local owner=$(stat -c %U "$exports_file")
-    local perm=$(stat -c %a "$exports_file")
+    local owner
+    owner=$(stat -c %U "$exports_file")
+    local perm
+    perm=$(stat -c %a "$exports_file")
 
     local fail_reasons=""
 
@@ -2617,12 +2733,15 @@ check_u70() {
     fi
 
     # PrivacyOptions 확인
-    local privacy=$(grep -i "PrivacyOptions" "$sendmail_cf" 2>/dev/null)
+    local privacy
+    privacy=$(grep -i "PrivacyOptions" "$sendmail_cf" 2>/dev/null)
 
     if [ -n "$privacy" ]; then
         # noexpn, novrfy 옵션 확인
-        local noexpn=$(echo "$privacy" | grep -i "noexpn")
-        local novrfy=$(echo "$privacy" | grep -i "novrfy")
+        local noexpn
+        noexpn=$(echo "$privacy" | grep -i "noexpn")
+        local novrfy
+        novrfy=$(echo "$privacy" | grep -i "novrfy")
 
         if [ -n "$noexpn" ] && [ -n "$novrfy" ]; then
             log_result "$check_id" "$check_name" "PASS" "[Risk: ${risk_level}] EXPN and VRFY commands are disabled"
@@ -2650,13 +2769,15 @@ check_u71() {
             config_found=true
 
             # ServerTokens 확인
-            local servertokens=$(grep -i "^[[:space:]]*ServerTokens" "$config" | grep -v "^[[:space:]]*#" | tail -1 | awk '{print tolower($2)}')
+            local servertokens
+            servertokens=$(grep -i "^[[:space:]]*ServerTokens" "$config" | grep -v "^[[:space:]]*#" | tail -1 | awk '{print tolower($2)}')
             if [[ "$servertokens" == "prod" || "$servertokens" == "productonly" ]]; then
                 servertokens_ok=true
             fi
 
             # ServerSignature 확인
-            local serversignature=$(grep -i "^[[:space:]]*ServerSignature" "$config" | grep -v "^[[:space:]]*#" | tail -1 | awk '{print tolower($2)}')
+            local serversignature
+            serversignature=$(grep -i "^[[:space:]]*ServerSignature" "$config" | grep -v "^[[:space:]]*#" | tail -1 | awk '{print tolower($2)}')
             if [ "$serversignature" == "off" ]; then
                 serversignature_ok=true
             fi
@@ -2735,7 +2856,8 @@ check_u73() {
     fi
 
     # 현재 설치된 openssl 버전
-    local openssl_version=$(rpm -q openssl)
+    local openssl_version
+    openssl_version=$(rpm -q openssl)
 
     # Rocky Linux는 백포트를 사용하므로 RPM changelog에서 CVE 패치 여부 확인
     local cve_patched=false
@@ -2744,7 +2866,8 @@ check_u73() {
     fi
 
     # yum/dnf를 통한 보안 업데이트 확인
-    local security_updates=$(yum check-update --security openssl 2>/dev/null | grep -c "openssl" || echo "0")
+    local security_updates
+    security_updates=$(yum check-update --security openssl 2>/dev/null | grep -c "openssl" || echo "0")
 
     if [ "$cve_patched" == true ]; then
         log_result "$check_id" "$check_name" "PASS" "[Risk: ${risk_level}] CVE-2025-11187 patch is applied ($openssl_version)"
@@ -2768,7 +2891,8 @@ check_u74() {
     fi
 
     # 현재 설치된 openssl 버전
-    local openssl_version=$(rpm -q openssl)
+    local openssl_version
+    openssl_version=$(rpm -q openssl)
 
     # Rocky Linux는 백포트를 사용하므로 RPM changelog에서 CVE 패치 여부 확인
     local cve_patched=false
@@ -2777,7 +2901,8 @@ check_u74() {
     fi
 
     # yum/dnf를 통한 보안 업데이트 확인
-    local security_updates=$(yum check-update --security openssl 2>/dev/null | grep -c "openssl" || echo "0")
+    local security_updates
+    security_updates=$(yum check-update --security openssl 2>/dev/null | grep -c "openssl" || echo "0")
 
     if [ "$cve_patched" == true ]; then
         log_result "$check_id" "$check_name" "PASS" "[Risk: ${risk_level}] CVE-2025-15467 patch is applied ($openssl_version)"
@@ -3400,13 +3525,156 @@ latest_check_u04() {
             "[Risk: ${risk_level}] Accounts with unshadowed passwords: ${unshadowed}"
     fi
 }
-latest_check_u05() { latest_run_legacy_check "U-05" "root 이외의 UID가 ‘0’ 금지" check_u44; }
-latest_check_u06() { latest_run_legacy_check "U-06" "사용자 계정 su 기능 제한" check_u45; }
-latest_check_u07() { latest_run_legacy_check "U-07" "불필요한 계정 제거" check_u49; }
-latest_check_u08() { latest_run_legacy_check "U-08" "관리자 그룹에 최소한의 계정 포함" check_u50; }
-latest_check_u09() { latest_run_legacy_check "U-09" "계정이 존재하지 않는 GID 금지" check_u51; }
-latest_check_u10() { latest_run_legacy_check "U-10" "동일한 UID 금지" check_u52; }
-latest_check_u11() { latest_run_legacy_check "U-11" "사용자 Shell 점검" check_u53; }
+latest_check_u05() {
+    local check_id="U-05"
+    local check_name="root 이외의 UID가 ‘0’ 금지"
+    local risk_level="HIGH"
+
+    local uid_zero_accounts
+    uid_zero_accounts=$(awk -F: ‘$3==0 && $1!="root" {print $1}’ /etc/passwd)
+
+    if [ -z "$uid_zero_accounts" ]; then
+        log_result "$check_id" "$check_name" "PASS" "[Risk: ${risk_level}] No non-root accounts with UID 0"
+    else
+        log_result "$check_id" "$check_name" "FAIL" "[Risk: ${risk_level}] Non-root accounts with UID 0: ${uid_zero_accounts}"
+    fi
+}
+latest_check_u06() {
+    local check_id="U-06"
+    local check_name="사용자 계정 su 기능 제한"
+    local risk_level="HIGH"
+
+    local pam_su="/etc/pam.d/su"
+
+    if [ ! -f "$pam_su" ]; then
+        log_result "$check_id" "$check_name" "FAIL" "[Risk: ${risk_level}] /etc/pam.d/su file does not exist"
+        return
+    fi
+
+    local wheel_config
+    wheel_config=$(grep "pam_wheel" "$pam_su" | grep -v "^[[:space:]]*#")
+
+    if [ -n "$wheel_config" ]; then
+        local wheel_required
+        wheel_required=$(echo "$wheel_config" | grep "use_uid")
+        if [ -n "$wheel_required" ]; then
+            log_result "$check_id" "$check_name" "PASS" "[Risk: ${risk_level}] su command is restricted to wheel group"
+        else
+            log_result "$check_id" "$check_name" "PASS" "[Risk: ${risk_level}] pam_wheel is configured"
+        fi
+    else
+        log_result "$check_id" "$check_name" "FAIL" "[Risk: ${risk_level}] su command is not restricted (pam_wheel not configured)"
+    fi
+}
+latest_check_u07() {
+    local check_id="U-07"
+    local check_name="불필요한 계정 제거"
+    local risk_level="LOW"
+
+    local unnecessary_accounts=""
+    local system_accounts=("lp" "news" "uucp" "games" "gopher")
+
+    for account in "${system_accounts[@]}"; do
+        local account_info
+        account_info=$(grep "^${account}:" /etc/passwd 2>/dev/null)
+        if [ -n "$account_info" ]; then
+            local shell
+            shell=$(echo "$account_info" | cut -d: -f7)
+            if [[ "$shell" != "/sbin/nologin" && "$shell" != "/bin/false" && "$shell" != "/usr/sbin/nologin" ]]; then
+                unnecessary_accounts="${unnecessary_accounts}${account}(shell:${shell}), "
+            fi
+        fi
+    done
+
+    if [ -z "$unnecessary_accounts" ]; then
+        log_result "$check_id" "$check_name" "PASS" "[Risk: ${risk_level}] No unnecessary accounts with login shell found"
+    else
+        log_result "$check_id" "$check_name" "FAIL" "[Risk: ${risk_level}] Unnecessary accounts found: ${unnecessary_accounts}"
+    fi
+}
+latest_check_u08() {
+    local check_id="U-08"
+    local check_name="관리자 그룹에 최소한의 계정 포함"
+    local risk_level="MEDIUM"
+
+    local wheel_members
+    wheel_members=$(getent group wheel 2>/dev/null | cut -d: -f4)
+
+    if [ -z "$wheel_members" ]; then
+        log_result "$check_id" "$check_name" "PASS" "[Risk: ${risk_level}] No users in wheel group"
+    else
+        local member_count
+        member_count=$(echo "$wheel_members" | tr ‘,’ ‘\n’ | wc -l)
+        log_result "$check_id" "$check_name" "PASS" "[Risk: ${risk_level}] Wheel group members (${member_count}): ${wheel_members} (verify if necessary)"
+    fi
+}
+latest_check_u09() {
+    local check_id="U-09"
+    local check_name="계정이 존재하지 않는 GID 금지"
+    local risk_level="LOW"
+
+    local invalid_gids=""
+
+    while IFS=: read -r username _ uid gid _ _ _; do
+        if ! getent group "$gid" &>/dev/null; then
+            invalid_gids="${invalid_gids}${username}(GID:${gid}), "
+        fi
+    done < /etc/passwd
+
+    if [ -z "$invalid_gids" ]; then
+        log_result "$check_id" "$check_name" "PASS" "[Risk: ${risk_level}] All user GIDs exist in /etc/group"
+    else
+        log_result "$check_id" "$check_name" "FAIL" "[Risk: ${risk_level}] Users with non-existent GID: ${invalid_gids}"
+    fi
+}
+latest_check_u10() {
+    local check_id="U-10"
+    local check_name="동일한 UID 금지"
+    local risk_level="MEDIUM"
+
+    local duplicate_uids
+    duplicate_uids=$(awk -F: ‘{print $3}’ /etc/passwd | sort | uniq -d)
+
+    if [ -z "$duplicate_uids" ]; then
+        log_result "$check_id" "$check_name" "PASS" "[Risk: ${risk_level}] No duplicate UIDs found"
+    else
+        local dup_details=""
+        for uid in $duplicate_uids; do
+            local users
+            users=$(awk -F: -v uid="$uid" ‘$3==uid {print $1}’ /etc/passwd | tr ‘\n’ ‘,’ | sed ‘s/,$//’)
+            dup_details="${dup_details}UID ${uid}(${users}), "
+        done
+        log_result "$check_id" "$check_name" "FAIL" "[Risk: ${risk_level}] Duplicate UIDs found: ${dup_details}"
+    fi
+}
+latest_check_u11() {
+    local check_id="U-11"
+    local check_name="사용자 Shell 점검"
+    local risk_level="LOW"
+
+    local valid_shells=""
+    if [ -f "/etc/shells" ]; then
+        valid_shells=$(grep -v "^#" /etc/shells | grep -v "^$")
+    fi
+
+    local invalid_shell_users=""
+
+    while IFS=: read -r username _ uid _ _ _ shell; do
+        if [[ "$shell" != "/sbin/nologin" && "$shell" != "/bin/false" && "$shell" != "/usr/sbin/nologin" ]]; then
+            if [ -n "$valid_shells" ]; then
+                if ! echo "$valid_shells" | grep -q "^${shell}$"; then
+                    invalid_shell_users="${invalid_shell_users}${username}(${shell}), "
+                fi
+            fi
+        fi
+    done < /etc/passwd
+
+    if [ -z "$invalid_shell_users" ]; then
+        log_result "$check_id" "$check_name" "PASS" "[Risk: ${risk_level}] All user shells are valid"
+    else
+        log_result "$check_id" "$check_name" "FAIL" "[Risk: ${risk_level}] Users with invalid shells: ${invalid_shell_users}"
+    fi
+}
 # latest_check_u12 is implemented directly above.
 latest_check_u14() {
     local check_id="U-14"
@@ -3449,13 +3717,233 @@ latest_check_u14() {
             "[Risk: ${risk_level}] ${issues}"
     fi
 }
-latest_check_u15() { latest_run_legacy_check "U-15" "파일 및 디렉터리 소유자 설정" check_u06; }
-latest_check_u16() { latest_run_legacy_check "U-16" "/etc/passwd 파일 소유자 및 권한 설정" check_u07; }
-latest_check_u18() { latest_run_legacy_check "U-18" "/etc/shadow 파일 소유자 및 권한 설정" check_u08; }
-latest_check_u19() { latest_run_legacy_check "U-19" "/etc/hosts 파일 소유자 및 권한 설정" check_u09; }
-latest_check_u20() { latest_run_legacy_check "U-20" "/etc/(x)inetd.conf 파일 소유자 및 권한 설정" check_u10; }
-latest_check_u21() { latest_run_legacy_check "U-21" "/etc/(r)syslog.conf 파일 소유자 및 권한 설정" check_u11; }
-latest_check_u22() { latest_run_legacy_check "U-22" "/etc/services 파일 소유자 및 권한 설정" check_u12; }
+latest_check_u15() {
+    local check_id="U-15"
+    local check_name="파일 및 디렉터리 소유자 설정"
+    local risk_level="HIGH"
+
+    local noowner_files
+    noowner_files=$(find / -nouser -o -nogroup 2>/dev/null | head -100)
+
+    if [ -z "$noowner_files" ]; then
+        log_result "$check_id" "$check_name" "PASS" "[Risk: ${risk_level}] No files or directories with non-existent owner found"
+    else
+        local file_count
+        file_count=$(echo "$noowner_files" | wc -l)
+        local file_list
+        file_list=$(echo "$noowner_files" | head -10 | tr '\n' ', ' | sed 's/,$//')
+        if [ "$file_count" -gt 10 ]; then
+            file_list="${file_list} ... and $((file_count - 10)) more"
+        fi
+        log_result "$check_id" "$check_name" "FAIL" "[Risk: ${risk_level}] Found ${file_count} files/directories with non-existent owner: ${file_list}"
+    fi
+}
+latest_check_u16() {
+    local check_id="U-16"
+    local check_name="/etc/passwd 파일 소유자 및 권한 설정"
+    local risk_level="HIGH"
+
+    local passwd_file="/etc/passwd"
+
+    if [ ! -f "$passwd_file" ]; then
+        log_result "$check_id" "$check_name" "FAIL" "[Risk: ${risk_level}] /etc/passwd file does not exist"
+        return
+    fi
+
+    local owner
+    owner=$(stat -c %U "$passwd_file")
+    local perm
+    perm=$(stat -c %a "$passwd_file")
+
+    local fail_reasons=""
+
+    if [ "$owner" != "root" ]; then
+        fail_reasons="${fail_reasons}owner is ${owner} (should be root), "
+    fi
+
+    if [ "$perm" -gt 644 ]; then
+        fail_reasons="${fail_reasons}permission is ${perm} (should be 644 or less)"
+    fi
+
+    if [ -z "$fail_reasons" ]; then
+        log_result "$check_id" "$check_name" "PASS" "[Risk: ${risk_level}] Owner: ${owner}, Permission: ${perm}"
+    else
+        log_result "$check_id" "$check_name" "FAIL" "[Risk: ${risk_level}] ${fail_reasons}"
+    fi
+}
+latest_check_u18() {
+    local check_id="U-18"
+    local check_name="/etc/shadow 파일 소유자 및 권한 설정"
+    local risk_level="HIGH"
+
+    local shadow_file="/etc/shadow"
+
+    if [ ! -f "$shadow_file" ]; then
+        log_result "$check_id" "$check_name" "FAIL" "[Risk: ${risk_level}] /etc/shadow file does not exist"
+        return
+    fi
+
+    local owner
+    owner=$(stat -c %U "$shadow_file")
+    local perm
+    perm=$(stat -c %a "$shadow_file")
+
+    local fail_reasons=""
+
+    if [ "$owner" != "root" ]; then
+        fail_reasons="${fail_reasons}owner is ${owner} (should be root), "
+    fi
+
+    if [ "$perm" -gt 400 ]; then
+        fail_reasons="${fail_reasons}permission is ${perm} (should be 400 or less)"
+    fi
+
+    if [ -z "$fail_reasons" ]; then
+        log_result "$check_id" "$check_name" "PASS" "[Risk: ${risk_level}] Owner: ${owner}, Permission: ${perm}"
+    else
+        log_result "$check_id" "$check_name" "FAIL" "[Risk: ${risk_level}] ${fail_reasons}"
+    fi
+}
+latest_check_u19() {
+    local check_id="U-19"
+    local check_name="/etc/hosts 파일 소유자 및 권한 설정"
+    local risk_level="HIGH"
+
+    local hosts_file="/etc/hosts"
+
+    if [ ! -f "$hosts_file" ]; then
+        log_result "$check_id" "$check_name" "FAIL" "[Risk: ${risk_level}] /etc/hosts file does not exist"
+        return
+    fi
+
+    local owner
+    owner=$(stat -c %U "$hosts_file")
+    local perm
+    perm=$(stat -c %a "$hosts_file")
+
+    local fail_reasons=""
+
+    if [ "$owner" != "root" ]; then
+        fail_reasons="${fail_reasons}owner is ${owner} (should be root), "
+    fi
+
+    if [ "$perm" -gt 600 ]; then
+        fail_reasons="${fail_reasons}permission is ${perm} (should be 600 or less)"
+    fi
+
+    if [ -z "$fail_reasons" ]; then
+        log_result "$check_id" "$check_name" "PASS" "[Risk: ${risk_level}] Owner: ${owner}, Permission: ${perm}"
+    else
+        log_result "$check_id" "$check_name" "FAIL" "[Risk: ${risk_level}] ${fail_reasons}"
+    fi
+}
+latest_check_u20() {
+    local check_id="U-20"
+    local check_name="/etc/(x)inetd.conf 파일 소유자 및 권한 설정"
+    local risk_level="HIGH"
+
+    local inetd_file=""
+    if [ -f "/etc/inetd.conf" ]; then
+        inetd_file="/etc/inetd.conf"
+    elif [ -f "/etc/xinetd.conf" ]; then
+        inetd_file="/etc/xinetd.conf"
+    else
+        log_result "$check_id" "$check_name" "N/A" "[Risk: ${risk_level}] /etc/inetd.conf or /etc/xinetd.conf file does not exist"
+        return
+    fi
+
+    local owner
+    owner=$(stat -c %U "$inetd_file")
+    local perm
+    perm=$(stat -c %a "$inetd_file")
+
+    local fail_reasons=""
+
+    if [ "$owner" != "root" ]; then
+        fail_reasons="${fail_reasons}owner is ${owner} (should be root), "
+    fi
+
+    if [ "$perm" -ne 600 ]; then
+        fail_reasons="${fail_reasons}permission is ${perm} (should be 600)"
+    fi
+
+    if [ -z "$fail_reasons" ]; then
+        log_result "$check_id" "$check_name" "PASS" "[Risk: ${risk_level}] File: ${inetd_file}, Owner: ${owner}, Permission: ${perm}"
+    else
+        log_result "$check_id" "$check_name" "FAIL" "[Risk: ${risk_level}] File: ${inetd_file}, ${fail_reasons}"
+    fi
+}
+latest_check_u21() {
+    local check_id="U-21"
+    local check_name="/etc/(r)syslog.conf 파일 소유자 및 권한 설정"
+    local risk_level="HIGH"
+
+    local syslog_file=""
+    if [ -f "/etc/syslog.conf" ]; then
+        syslog_file="/etc/syslog.conf"
+    elif [ -f "/etc/rsyslog.conf" ]; then
+        syslog_file="/etc/rsyslog.conf"
+    elif [ -f "/etc/syslog-ng/syslog-ng.conf" ]; then
+        syslog_file="/etc/syslog-ng/syslog-ng.conf"
+    else
+        log_result "$check_id" "$check_name" "N/A" "[Risk: ${risk_level}] /etc/syslog.conf or /etc/rsyslog.conf file does not exist"
+        return
+    fi
+
+    local owner
+    owner=$(stat -c %U "$syslog_file")
+    local perm
+    perm=$(stat -c %a "$syslog_file")
+
+    local fail_reasons=""
+
+    if [[ "$owner" != "root" && "$owner" != "bin" && "$owner" != "sys" ]]; then
+        fail_reasons="${fail_reasons}owner is ${owner} (should be root, bin, or sys), "
+    fi
+
+    if [ "$perm" -gt 640 ]; then
+        fail_reasons="${fail_reasons}permission is ${perm} (should be 640 or less)"
+    fi
+
+    if [ -z "$fail_reasons" ]; then
+        log_result "$check_id" "$check_name" "PASS" "[Risk: ${risk_level}] File: ${syslog_file}, Owner: ${owner}, Permission: ${perm}"
+    else
+        log_result "$check_id" "$check_name" "FAIL" "[Risk: ${risk_level}] File: ${syslog_file}, ${fail_reasons}"
+    fi
+}
+latest_check_u22() {
+    local check_id="U-22"
+    local check_name="/etc/services 파일 소유자 및 권한 설정"
+    local risk_level="HIGH"
+
+    local services_file="/etc/services"
+
+    if [ ! -f "$services_file" ]; then
+        log_result "$check_id" "$check_name" "FAIL" "[Risk: ${risk_level}] /etc/services file does not exist"
+        return
+    fi
+
+    local owner
+    owner=$(stat -c %U "$services_file")
+    local perm
+    perm=$(stat -c %a "$services_file")
+
+    local fail_reasons=""
+
+    if [[ "$owner" != "root" && "$owner" != "bin" && "$owner" != "sys" ]]; then
+        fail_reasons="${fail_reasons}owner is ${owner} (should be root, bin, or sys), "
+    fi
+
+    if [ "$perm" -gt 644 ]; then
+        fail_reasons="${fail_reasons}permission is ${perm} (should be 644 or less)"
+    fi
+
+    if [ -z "$fail_reasons" ]; then
+        log_result "$check_id" "$check_name" "PASS" "[Risk: ${risk_level}] Owner: ${owner}, Permission: ${perm}"
+    else
+        log_result "$check_id" "$check_name" "FAIL" "[Risk: ${risk_level}] ${fail_reasons}"
+    fi
+}
 latest_check_u23() {
     local check_id="U-23"
     local check_name="SUID, SGID, Sticky bit 설정 파일 점검"
@@ -3567,7 +4055,34 @@ latest_check_u26() {
         log_result "$check_id" "$check_name" "FAIL" "[Risk: ${risk_level}] Found ${file_count} unusual files in /dev: ${file_list}"
     fi
 }
-latest_check_u27() { latest_run_legacy_check "U-27" "\$HOME/.rhosts, hosts.equiv 사용 금지" check_u17; }
+latest_check_u27() {
+    local check_id="U-27"
+    local check_name="\$HOME/.rhosts, hosts.equiv 사용 금지"
+    local risk_level="HIGH"
+
+    local found_files=""
+    local found_count=0
+
+    if [ -f "/etc/hosts.equiv" ]; then
+        found_files="${found_files}/etc/hosts.equiv, "
+        ((found_count++))
+    fi
+
+    while IFS=: read -r username _ uid _ _ homedir _; do
+        if [ "$uid" -ge 0 ] && [ -d "$homedir" ]; then
+            if [ -f "${homedir}/.rhosts" ]; then
+                found_files="${found_files}${homedir}/.rhosts, "
+                ((found_count++))
+            fi
+        fi
+    done < /etc/passwd
+
+    if [ -z "$found_files" ]; then
+        log_result "$check_id" "$check_name" "PASS" "[Risk: ${risk_level}] No .rhosts or hosts.equiv files found"
+    else
+        log_result "$check_id" "$check_name" "FAIL" "[Risk: ${risk_level}] Found ${found_count} files: ${found_files}"
+    fi
+}
 latest_check_u28() {
     local check_id="U-28"
     local check_name="접속 IP 및 포트 제한"
@@ -3726,26 +4241,499 @@ latest_check_u33() {
             "[Risk: ${risk_level}] ${issues}"
     fi
 }
-latest_check_u34() { latest_run_legacy_check "U-34" "Finger 서비스 비활성화" check_u19; }
-latest_check_u35() { latest_run_legacy_check "U-35" "공유 서비스에 대한 익명 접근 제한 설정" check_u20; }
-latest_check_u36() { latest_run_legacy_check "U-36" "r 계열 서비스 비활성화" check_u21; }
+latest_check_u34() {
+    local check_id="U-34"
+    local check_name="Finger 서비스 비활성화"
+    local risk_level="HIGH"
+
+    local finger_status=""
+
+    if command -v systemctl &>/dev/null; then
+        finger_status=$(systemctl is-enabled finger 2>/dev/null)
+    fi
+
+    if [ -z "$finger_status" ] || [ "$finger_status" == "disabled" ] || [[ "$finger_status" == *"not-found"* ]]; then
+        log_result "$check_id" "$check_name" "PASS" "[Risk: ${risk_level}] Finger service is disabled or not installed"
+    else
+        log_result "$check_id" "$check_name" "FAIL" "[Risk: ${risk_level}] Finger service is ${finger_status}"
+    fi
+}
+latest_check_u35() {
+    local check_id="U-35"
+    local check_name="공유 서비스에 대한 익명 접근 제한 설정"
+    local risk_level="HIGH"
+
+    local vsftpd_conf="/etc/vsftpd/vsftpd.conf"
+
+    if [ ! -f "$vsftpd_conf" ]; then
+        log_result "$check_id" "$check_name" "PASS" "[Risk: ${risk_level}] FTP service is not installed"
+        return
+    fi
+
+    local anon_enabled
+    anon_enabled=$(grep -i "^[[:space:]]*anonymous_enable" "$vsftpd_conf" | grep -v "^[[:space:]]*#" | tail -1 | awk -F= '{print tolower($2)}' | tr -d ' ')
+
+    if [ -z "$anon_enabled" ] || [ "$anon_enabled" == "no" ]; then
+        log_result "$check_id" "$check_name" "PASS" "[Risk: ${risk_level}] Anonymous FTP is disabled"
+    else
+        log_result "$check_id" "$check_name" "FAIL" "[Risk: ${risk_level}] Anonymous FTP is enabled (anonymous_enable=${anon_enabled})"
+    fi
+}
+latest_check_u36() {
+    local check_id="U-36"
+    local check_name="r 계열 서비스 비활성화"
+    local risk_level="HIGH"
+
+    local r_services=("rlogin" "rsh" "rexec")
+    local enabled_services=""
+
+    for service in "${r_services[@]}"; do
+        if command -v systemctl &>/dev/null; then
+            local status
+            status=$(systemctl is-enabled "$service" 2>/dev/null)
+            if [ "$status" == "enabled" ]; then
+                enabled_services="${enabled_services}${service}, "
+            fi
+        fi
+    done
+
+    if [ -z "$enabled_services" ]; then
+        log_result "$check_id" "$check_name" "PASS" "[Risk: ${risk_level}] All r-command services are disabled"
+    else
+        log_result "$check_id" "$check_name" "FAIL" "[Risk: ${risk_level}] Enabled services: ${enabled_services}"
+    fi
+}
 # latest_check_u37 is implemented directly above.
-latest_check_u38() { latest_run_legacy_check "U-38" "DoS 공격에 취약한 서비스 비활성화" check_u23; }
-latest_check_u39() { latest_run_legacy_check "U-39" "불필요한 NFS 서비스 비활성화" check_u24; }
-latest_check_u40() { latest_run_legacy_check "U-40" "NFS 접근 통제" check_u25; }
-latest_check_u41() { latest_run_legacy_check "U-41" "불필요한 automountd 제거" check_u26; }
-latest_check_u42() { latest_run_legacy_check "U-42" "불필요한 RPC 서비스 비활성화" check_u27; }
-latest_check_u43() { latest_run_legacy_check "U-43" "NIS, NIS+ 점검" check_u28; }
-latest_check_u44() { latest_run_legacy_check "U-44" "tftp, talk 서비스 비활성화" check_u29; }
-latest_check_u45() { latest_run_legacy_check "U-45" "메일 서비스 버전 점검" check_u30; }
-latest_check_u46() { latest_run_legacy_check "U-46" "일반 사용자의 메일 서비스 실행 방지" check_u32; }
-latest_check_u47() { latest_run_legacy_check "U-47" "스팸 메일 릴레이 제한" check_u31; }
-latest_check_u48() { latest_run_legacy_check "U-48" "expn, vrfy 명령어 제한" check_u70; }
-latest_check_u49() { latest_run_legacy_check "U-49" "DNS 보안 버전 패치" check_u33; }
-latest_check_u50() { latest_run_legacy_check "U-50" "DNS Zone Transfer 설정" check_u34; }
-latest_check_u54() { latest_run_legacy_check "U-54" "암호화되지 않는 FTP 서비스 비활성화" check_u61; }
-latest_check_u55() { latest_run_legacy_check "U-55" "FTP 계정 Shell 제한" check_u62; }
-latest_check_u57() { latest_run_legacy_check "U-57" "Ftpusers 파일 설정" check_u64; }
+latest_check_u38() {
+    local check_id="U-38"
+    local check_name="DoS 공격에 취약한 서비스 비활성화"
+    local risk_level="HIGH"
+
+    local vulnerable_services=("echo" "discard" "daytime" "chargen")
+    local enabled_services=""
+
+    for service in "${vulnerable_services[@]}"; do
+        if command -v systemctl &>/dev/null; then
+            local status
+            status=$(systemctl is-enabled "$service" 2>/dev/null)
+            if [ "$status" == "enabled" ]; then
+                enabled_services="${enabled_services}${service}, "
+            fi
+        fi
+    done
+
+    if [ -d "/etc/xinetd.d" ]; then
+        for service in "${vulnerable_services[@]}"; do
+            if [ -f "/etc/xinetd.d/$service" ]; then
+                local disabled
+                disabled=$(grep "disable.*=.*yes" "/etc/xinetd.d/$service" 2>/dev/null)
+                if [ -z "$disabled" ]; then
+                    enabled_services="${enabled_services}xinetd:${service}, "
+                fi
+            fi
+        done
+    fi
+
+    if [ -z "$enabled_services" ]; then
+        log_result "$check_id" "$check_name" "PASS" "[Risk: ${risk_level}] No vulnerable services enabled"
+    else
+        log_result "$check_id" "$check_name" "FAIL" "[Risk: ${risk_level}] Enabled services: ${enabled_services}"
+    fi
+}
+latest_check_u39() {
+    local check_id="U-39"
+    local check_name="불필요한 NFS 서비스 비활성화"
+    local risk_level="HIGH"
+
+    local nfs_status=""
+
+    if command -v systemctl &>/dev/null; then
+        nfs_status=$(systemctl is-enabled nfs-server 2>/dev/null)
+    fi
+
+    if [ -z "$nfs_status" ] || [ "$nfs_status" == "disabled" ] || [[ "$nfs_status" == *"not-found"* ]]; then
+        log_result "$check_id" "$check_name" "PASS" "[Risk: ${risk_level}] NFS service is disabled or not installed"
+    else
+        local nfs_exports
+        nfs_exports=$(grep -v "^#" /etc/exports 2>/dev/null | grep -v "^$")
+        if [ -n "$nfs_exports" ]; then
+            log_result "$check_id" "$check_name" "FAIL" "[Risk: ${risk_level}] NFS service is ${nfs_status} and in use"
+        else
+            log_result "$check_id" "$check_name" "FAIL" "[Risk: ${risk_level}] NFS service is ${nfs_status} but not configured"
+        fi
+    fi
+}
+latest_check_u40() {
+    local check_id="U-40"
+    local check_name="NFS 접근 통제"
+    local risk_level="HIGH"
+
+    local exports_file="/etc/exports"
+
+    if [ ! -f "$exports_file" ]; then
+        log_result "$check_id" "$check_name" "N/A" "[Risk: ${risk_level}] /etc/exports file does not exist"
+        return
+    fi
+
+    local active_exports
+    active_exports=$(grep -v "^#" "$exports_file" | grep -v "^$")
+
+    if [ -z "$active_exports" ]; then
+        log_result "$check_id" "$check_name" "PASS" "[Risk: ${risk_level}] No NFS exports configured"
+        return
+    fi
+
+    local insecure_exports
+    insecure_exports=$(echo "$active_exports" | grep -E '\*|0\.0\.0\.0|everyone')
+
+    if [ -z "$insecure_exports" ]; then
+        log_result "$check_id" "$check_name" "PASS" "[Risk: ${risk_level}] NFS exports have proper access control"
+    else
+        log_result "$check_id" "$check_name" "FAIL" "[Risk: ${risk_level}] Insecure NFS exports found: everyone access allowed"
+    fi
+}
+latest_check_u41() {
+    local check_id="U-41"
+    local check_name="불필요한 automountd 제거"
+    local risk_level="HIGH"
+
+    local autofs_status=""
+
+    if command -v systemctl &>/dev/null; then
+        autofs_status=$(systemctl is-enabled autofs 2>/dev/null)
+    fi
+
+    if [ -z "$autofs_status" ] || [ "$autofs_status" == "disabled" ] || [[ "$autofs_status" == *"not-found"* ]]; then
+        log_result "$check_id" "$check_name" "PASS" "[Risk: ${risk_level}] Autofs service is disabled or not installed"
+    else
+        log_result "$check_id" "$check_name" "FAIL" "[Risk: ${risk_level}] Autofs service is ${autofs_status}"
+    fi
+}
+latest_check_u42() {
+    local check_id="U-42"
+    local check_name="불필요한 RPC 서비스 비활성화"
+    local risk_level="HIGH"
+
+    local rpcbind_status=""
+
+    if command -v systemctl &>/dev/null; then
+        rpcbind_status=$(systemctl is-active rpcbind 2>/dev/null)
+    fi
+
+    if [ "$rpcbind_status" == "active" ]; then
+        if command -v rpcinfo &>/dev/null; then
+            local rpc_services
+            rpc_services=$(rpcinfo -p 2>/dev/null | wc -l)
+            if [ "$rpc_services" -gt 0 ]; then
+                log_result "$check_id" "$check_name" "FAIL" "[Risk: ${risk_level}] RPC services are running (${rpc_services} services found)"
+            else
+                log_result "$check_id" "$check_name" "PASS" "[Risk: ${risk_level}] No RPC services registered"
+            fi
+        else
+            log_result "$check_id" "$check_name" "FAIL" "[Risk: ${risk_level}] rpcbind is active"
+        fi
+    else
+        log_result "$check_id" "$check_name" "PASS" "[Risk: ${risk_level}] RPC service is not active"
+    fi
+}
+latest_check_u43() {
+    local check_id="U-43"
+    local check_name="NIS, NIS+ 점검"
+    local risk_level="HIGH"
+
+    local nis_services=("ypserv" "ypbind")
+    local enabled_services=""
+
+    for service in "${nis_services[@]}"; do
+        if command -v systemctl &>/dev/null; then
+            local status
+            status=$(systemctl is-enabled "$service" 2>/dev/null)
+            if [ "$status" == "enabled" ]; then
+                enabled_services="${enabled_services}${service}, "
+            fi
+        fi
+    done
+
+    if [ -z "$enabled_services" ]; then
+        log_result "$check_id" "$check_name" "PASS" "[Risk: ${risk_level}] NIS services are disabled or not installed"
+    else
+        log_result "$check_id" "$check_name" "FAIL" "[Risk: ${risk_level}] Enabled services: ${enabled_services}"
+    fi
+}
+latest_check_u44() {
+    local check_id="U-44"
+    local check_name="tftp, talk 서비스 비활성화"
+    local risk_level="HIGH"
+
+    local services=("tftp" "talk" "ntalk")
+    local enabled_services=""
+
+    for service in "${services[@]}"; do
+        if command -v systemctl &>/dev/null; then
+            local status
+            status=$(systemctl is-enabled "$service" 2>/dev/null)
+            if [ "$status" == "enabled" ]; then
+                enabled_services="${enabled_services}${service}, "
+            fi
+        fi
+    done
+
+    if [ -z "$enabled_services" ]; then
+        log_result "$check_id" "$check_name" "PASS" "[Risk: ${risk_level}] TFTP and Talk services are disabled"
+    else
+        log_result "$check_id" "$check_name" "FAIL" "[Risk: ${risk_level}] Enabled services: ${enabled_services}"
+    fi
+}
+latest_check_u45() {
+    local check_id="U-45"
+    local check_name="메일 서비스 버전 점검"
+    local risk_level="HIGH"
+
+    if ! command -v sendmail &>/dev/null; then
+        log_result "$check_id" "$check_name" "PASS" "[Risk: ${risk_level}] Sendmail is not installed"
+        return
+    fi
+
+    local sendmail_version
+    sendmail_version=$(sendmail -d0.1 -bv root 2>&1 | grep "Version" | head -1)
+
+    if [ -n "$sendmail_version" ]; then
+        log_result "$check_id" "$check_name" "PASS" "[Risk: ${risk_level}] Sendmail version: ${sendmail_version} (manual verification required)"
+    else
+        log_result "$check_id" "$check_name" "FAIL" "[Risk: ${risk_level}] Cannot determine Sendmail version"
+    fi
+}
+latest_check_u46() {
+    local check_id="U-46"
+    local check_name="일반 사용자의 메일 서비스 실행 방지"
+    local risk_level="HIGH"
+
+    if [ ! -f "/usr/sbin/sendmail" ] && [ ! -f "/usr/lib/sendmail" ]; then
+        log_result "$check_id" "$check_name" "N/A" "[Risk: ${risk_level}] Sendmail is not installed"
+        return
+    fi
+
+    local sendmail_path=""
+    if [ -f "/usr/sbin/sendmail" ]; then
+        sendmail_path="/usr/sbin/sendmail"
+    elif [ -f "/usr/lib/sendmail" ]; then
+        sendmail_path="/usr/lib/sendmail"
+    fi
+
+    local owner
+    owner=$(stat -c %U "$sendmail_path" 2>/dev/null)
+    local perm
+    perm=$(stat -c %a "$sendmail_path" 2>/dev/null)
+
+    local fail_reasons=""
+
+    if [ "$owner" != "root" ]; then
+        fail_reasons="${fail_reasons}owner is ${owner} (should be root), "
+    fi
+
+    local first_digit=${perm:0:1}
+    if [ "$first_digit" == "4" ]; then
+        log_result "$check_id" "$check_name" "PASS" "[Risk: ${risk_level}] Sendmail has SUID bit (${perm}) - review if necessary"
+    elif [ "$perm" -le 755 ]; then
+        log_result "$check_id" "$check_name" "PASS" "[Risk: ${risk_level}] Owner: ${owner}, Permission: ${perm}"
+    else
+        fail_reasons="${fail_reasons}permission is ${perm} (too permissive)"
+        log_result "$check_id" "$check_name" "FAIL" "[Risk: ${risk_level}] ${fail_reasons}"
+    fi
+}
+latest_check_u47() {
+    local check_id="U-47"
+    local check_name="스팸 메일 릴레이 제한"
+    local risk_level="HIGH"
+
+    local sendmail_mc="/etc/mail/sendmail.mc"
+    local sendmail_cf="/etc/mail/sendmail.cf"
+
+    if [ ! -f "$sendmail_mc" ] && [ ! -f "$sendmail_cf" ]; then
+        log_result "$check_id" "$check_name" "N/A" "[Risk: ${risk_level}] Sendmail configuration files not found"
+        return
+    fi
+
+    local relay_config=""
+
+    if [ -f "$sendmail_mc" ]; then
+        relay_config=$(grep -i "RELAY" "$sendmail_mc" 2>/dev/null | grep -v "^dnl")
+    fi
+
+    if [ -f "$sendmail_cf" ]; then
+        local relay_cf
+        relay_cf=$(grep -i "R.*Relaying" "$sendmail_cf" 2>/dev/null)
+        relay_config="${relay_config}${relay_cf}"
+    fi
+
+    if [ -f "/etc/mail/access" ]; then
+        local relay_access
+        relay_access=$(grep -i "relay" "/etc/mail/access" 2>/dev/null | grep -v "^#")
+        if [ -n "$relay_access" ]; then
+            log_result "$check_id" "$check_name" "PASS" "[Risk: ${risk_level}] Mail relay restrictions are configured"
+            return
+        fi
+    fi
+
+    if [ -n "$relay_config" ]; then
+        log_result "$check_id" "$check_name" "PASS" "[Risk: ${risk_level}] Relay configuration found"
+    else
+        log_result "$check_id" "$check_name" "FAIL" "[Risk: ${risk_level}] No relay restrictions configured"
+    fi
+}
+latest_check_u48() {
+    local check_id="U-48"
+    local check_name="expn, vrfy 명령어 제한"
+    local risk_level="MEDIUM"
+
+    local sendmail_cf="/etc/mail/sendmail.cf"
+
+    if [ ! -f "$sendmail_cf" ]; then
+        log_result "$check_id" "$check_name" "N/A" "[Risk: ${risk_level}] sendmail.cf file does not exist"
+        return
+    fi
+
+    local privacy
+    privacy=$(grep -i "PrivacyOptions" "$sendmail_cf" 2>/dev/null)
+
+    if [ -n "$privacy" ]; then
+        local noexpn
+        noexpn=$(echo "$privacy" | grep -i "noexpn")
+        local novrfy
+        novrfy=$(echo "$privacy" | grep -i "novrfy")
+
+        if [ -n "$noexpn" ] && [ -n "$novrfy" ]; then
+            log_result "$check_id" "$check_name" "PASS" "[Risk: ${risk_level}] EXPN and VRFY commands are disabled"
+        else
+            log_result "$check_id" "$check_name" "FAIL" "[Risk: ${risk_level}] EXPN or VRFY commands are not fully disabled"
+        fi
+    else
+        log_result "$check_id" "$check_name" "FAIL" "[Risk: ${risk_level}] PrivacyOptions not configured"
+    fi
+}
+latest_check_u49() {
+    local check_id="U-49"
+    local check_name="DNS 보안 버전 패치"
+    local risk_level="HIGH"
+
+    if ! command -v named &>/dev/null; then
+        log_result "$check_id" "$check_name" "N/A" "[Risk: ${risk_level}] DNS service (named) is not installed"
+        return
+    fi
+
+    local named_version
+    named_version=$(named -v 2>/dev/null | head -1)
+
+    if [ -n "$named_version" ]; then
+        log_result "$check_id" "$check_name" "PASS" "[Risk: ${risk_level}] DNS version: ${named_version} (manual verification required)"
+    else
+        log_result "$check_id" "$check_name" "FAIL" "[Risk: ${risk_level}] Cannot determine DNS version"
+    fi
+}
+latest_check_u50() {
+    local check_id="U-50"
+    local check_name="DNS Zone Transfer 설정"
+    local risk_level="HIGH"
+
+    local named_conf="/etc/named.conf"
+
+    if [ ! -f "$named_conf" ]; then
+        log_result "$check_id" "$check_name" "N/A" "[Risk: ${risk_level}] named.conf file does not exist"
+        return
+    fi
+
+    local allow_transfer
+    allow_transfer=$(grep -i "allow-transfer" "$named_conf" 2>/dev/null | grep -v "^[[:space:]]*//")
+
+    if [ -n "$allow_transfer" ]; then
+        local insecure
+        insecure=$(echo "$allow_transfer" | grep -E "any|0\.0\.0\.0")
+        if [ -n "$insecure" ]; then
+            log_result "$check_id" "$check_name" "FAIL" "[Risk: ${risk_level}] Zone transfer allows unrestricted access"
+        else
+            log_result "$check_id" "$check_name" "PASS" "[Risk: ${risk_level}] Zone transfer is restricted"
+        fi
+    else
+        log_result "$check_id" "$check_name" "FAIL" "[Risk: ${risk_level}] No allow-transfer configuration found"
+    fi
+}
+latest_check_u54() {
+    local check_id="U-54"
+    local check_name="암호화되지 않는 FTP 서비스 비활성화"
+    local risk_level="MEDIUM"
+
+    local ftp_services=("vsftpd" "proftpd" "pureftpd")
+    local enabled_services=""
+
+    for service in "${ftp_services[@]}"; do
+        if command -v systemctl &>/dev/null; then
+            local status
+            status=$(systemctl is-enabled "$service" 2>/dev/null)
+            if [ "$status" == "enabled" ]; then
+                enabled_services="${enabled_services}${service}, "
+            fi
+        fi
+    done
+
+    if [ -z "$enabled_services" ]; then
+        log_result "$check_id" "$check_name" "PASS" "[Risk: ${risk_level}] FTP service is disabled or not installed"
+    else
+        log_result "$check_id" "$check_name" "FAIL" "[Risk: ${risk_level}] FTP services enabled: ${enabled_services} (use SFTP instead)"
+    fi
+}
+latest_check_u55() {
+    local check_id="U-55"
+    local check_name="FTP 계정 Shell 제한"
+    local risk_level="MEDIUM"
+
+    local ftp_account
+    ftp_account=$(grep "^ftp:" /etc/passwd 2>/dev/null)
+
+    if [ -z "$ftp_account" ]; then
+        log_result "$check_id" "$check_name" "N/A" "[Risk: ${risk_level}] FTP account does not exist"
+        return
+    fi
+
+    local ftp_shell
+    ftp_shell=$(echo "$ftp_account" | cut -d: -f7)
+
+    if [[ "$ftp_shell" == "/sbin/nologin" || "$ftp_shell" == "/bin/false" || "$ftp_shell" == "/usr/sbin/nologin" ]]; then
+        log_result "$check_id" "$check_name" "PASS" "[Risk: ${risk_level}] FTP account shell is ${ftp_shell}"
+    else
+        log_result "$check_id" "$check_name" "FAIL" "[Risk: ${risk_level}] FTP account has login shell: ${ftp_shell}"
+    fi
+}
+latest_check_u57() {
+    local check_id="U-57"
+    local check_name="Ftpusers 파일 설정"
+    local risk_level="MEDIUM"
+
+    local ftpusers_files=("/etc/ftpusers" "/etc/vsftpd/ftpusers" "/etc/vsftpd.ftpusers")
+    local file_found=false
+    local ftpusers_file=""
+
+    for file in "${ftpusers_files[@]}"; do
+        if [ -f "$file" ]; then
+            file_found=true
+            ftpusers_file="$file"
+            break
+        fi
+    done
+
+    if [ "$file_found" == false ]; then
+        log_result "$check_id" "$check_name" "N/A" "[Risk: ${risk_level}] ftpusers file does not exist"
+        return
+    fi
+
+    local root_blocked
+    root_blocked=$(grep "^root$" "$ftpusers_file" 2>/dev/null)
+
+    if [ -n "$root_blocked" ]; then
+        log_result "$check_id" "$check_name" "PASS" "[Risk: ${risk_level}] root account is blocked in ftpusers"
+    else
+        log_result "$check_id" "$check_name" "FAIL" "[Risk: ${risk_level}] root account is not blocked in ftpusers"
+    fi
+}
 # latest_check_u58 is implemented directly above.
 # latest_check_u60 is implemented directly above.
 latest_check_u62() {
@@ -3770,7 +4758,46 @@ latest_check_u62() {
     fi
 }
 # latest_check_u64 is implemented directly above.
-latest_check_u66() { latest_run_legacy_check "U-66" "정책에 따른 시스템 로깅 설정" check_u72; }
+latest_check_u66() {
+    local check_id="U-66"
+    local check_name="정책에 따른 시스템 로깅 설정"
+    local risk_level="MEDIUM"
+
+    local rsyslog_conf="/etc/rsyslog.conf"
+    local syslog_conf="/etc/syslog.conf"
+
+    local config_found=false
+    local logging_rules=0
+
+    if [ -f "$rsyslog_conf" ]; then
+        config_found=true
+        logging_rules=$(grep -v "^#" "$rsyslog_conf" | grep -v "^$" | grep -E "\*\.\*|auth|authpriv|daemon|kern|mail" | wc -l)
+    elif [ -f "$syslog_conf" ]; then
+        config_found=true
+        logging_rules=$(grep -v "^#" "$syslog_conf" | grep -v "^$" | grep -E "\*\.\*|auth|authpriv|daemon|kern|mail" | wc -l)
+    fi
+
+    local rsyslog_active=false
+    if systemctl is-active rsyslog &>/dev/null; then
+        rsyslog_active=true
+    fi
+
+    if [ "$config_found" == true ] && [ "$logging_rules" -gt 0 ] && [ "$rsyslog_active" == true ]; then
+        log_result "$check_id" "$check_name" "PASS" "[Risk: ${risk_level}] System logging is properly configured (${logging_rules} rules)"
+    else
+        local fail_msg=""
+        if [ "$config_found" == false ]; then
+            fail_msg="rsyslog.conf not found, "
+        fi
+        if [ "$logging_rules" -eq 0 ]; then
+            fail_msg="${fail_msg}no logging rules configured, "
+        fi
+        if [ "$rsyslog_active" == false ]; then
+            fail_msg="${fail_msg}rsyslog service not active"
+        fi
+        log_result "$check_id" "$check_name" "FAIL" "[Risk: ${risk_level}] ${fail_msg}"
+    fi
+}
 
 
 #===============================================================================
