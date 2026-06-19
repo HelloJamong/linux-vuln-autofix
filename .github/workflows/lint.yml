@@ -19,9 +19,13 @@ jobs:
           bash -n db_vuln_check.sh
           bash -n db_vuln_fix.sh
 
+      - name: Install shellcheck
+        run: sudo apt-get install -y shellcheck
+
       - name: shellcheck
-        uses: ludeeus/action-shellcheck@2.0.0
-        with:
-          scandir: '.'
-          severity: warning
-          ignore_paths: tests
+        run: |
+          shellcheck -S warning \
+            linux_vuln_check.sh \
+            linux_vuln_fix.sh \
+            db_vuln_check.sh \
+            db_vuln_fix.sh
