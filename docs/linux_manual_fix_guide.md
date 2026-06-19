@@ -13,11 +13,13 @@
 - [U-28: 접속 IP 및 포트 제한](#u-28-네트워크-접근-제어)
 - [U-40: NFS 접근 통제](#u-40-nfs-접근-제어)
 - [U-66: 보안 패치 관리](#u-66-보안-패치-관리)
-- [U-53: 불필요한 계정 제거](#u-53-불필요한-계정-제거)
-- [U-54: 관리자 그룹 최소화](#u-54-관리자-그룹-최소화)
-- [U-55: 유효하지 않은 GID 제거](#u-55-유효하지-않은-gid-제거)
-- [U-56: 중복 UID 제거](#u-56-중복-uid-제거)
-- [U-57: 사용자 Shell 점검](#u-57-사용자-shell-점검)
+- [U-07: 불필요한 계정 제거](#u-07-불필요한-계정-제거)
+- [U-08: 관리자 그룹 최소화](#u-08-관리자-그룹-최소화)
+- [U-09: 계정이 존재하지 않는 GID 금지](#u-09-계정이-존재하지-않는-gid-금지)
+- [U-10: 동일한 UID 금지](#u-10-동일한-uid-금지)
+- [U-11: 사용자 Shell 점검](#u-11-사용자-shell-점검)
+- [U-53: FTP 서비스 정보 노출 제한](#u-53-ftp-서비스-정보-노출-제한)
+- [U-56: FTP 서비스 접근 제어 설정](#u-56-ftp-서비스-접근-제어-설정)
 
 ---
 
@@ -653,12 +655,12 @@ dnf updateinfo info CVE-2024-XXXX
 
 ---
 
-## U-53: 불필요한 계정 제거
+## U-07: 불필요한 계정 제거
 
 ### 취약점 설명
 불필요한 계정은 공격자가 악용할 수 있는 진입점이 될 수 있습니다.
 
-**위험도**: MEDIUM (중)
+**위험도**: LOW (하)
 
 ### 점검 방법
 ```bash
@@ -773,7 +775,7 @@ id testuser  # 계정이 존재하지 않아야 함
 
 ---
 
-## U-54: 관리자 그룹 최소화
+## U-08: 관리자 그룹 최소화
 
 ### 취약점 설명
 wheel, sudo 등 관리자 그룹에 불필요한 계정이 포함되어 있으면 권한 남용의 위험이 있습니다.
@@ -865,7 +867,7 @@ sudo -l  # 사용 가능한 sudo 명령 확인
 
 ---
 
-## U-55: 유효하지 않은 GID 제거
+## U-09: 계정이 존재하지 않는 GID 금지
 
 ### 취약점 설명
 /etc/passwd에 존재하지 않는 GID를 참조하는 계정은 시스템 오류나 보안 문제를 일으킬 수 있습니다.
@@ -932,7 +934,7 @@ id testuser
 
 ---
 
-## U-56: 중복 UID 제거
+## U-10: 동일한 UID 금지
 
 ### 취약점 설명
 동일한 UID를 가진 여러 계정이 존재하면 파일 소유권 혼란과 보안 문제가 발생할 수 있습니다.
@@ -1015,7 +1017,7 @@ id user2
 
 ---
 
-## U-57: 사용자 Shell 점검
+## U-11: 사용자 Shell 점검
 
 ### 취약점 설명
 부적절한 shell이 설정된 계정은 보안 위험이 될 수 있습니다. 특히 서비스 계정에 로그인 shell이 설정된 경우 문제가 됩니다.
@@ -1123,6 +1125,111 @@ grep apache /etc/passwd
 | 시스템 계정 | /sbin/nologin | bin, daemon, adm |
 | 서비스 계정 | /sbin/nologin | apache, nginx, mysql |
 | 잠긴 계정 | /bin/false | 또는 /sbin/nologin |
+
+---
+
+## U-53: FTP 서비스 정보 노출 제한
+
+### 취약점 설명
+FTP 서버의 배너 메시지에 소프트웨어 종류, 버전 등 서버 정보가 노출되면 공격자가 특정 취약점을 이용할 수 있습니다.
+
+**위험도**: LOW (하)
+
+### 점검 방법
+```bash
+# vsftpd 사용 시 배너 확인
+grep -E "ftpd_banner|banner_file" /etc/vsftpd/vsftpd.conf 2>/dev/null
+
+# ProFTPD 사용 시
+grep -i "ServerIdent\|DisplayConnect" /etc/proftpd.conf 2>/dev/null
+
+# FTP 서비스 실행 여부 확인
+systemctl is-active vsftpd proftpd 2>/dev/null
+```
+
+### 조치 방법
+
+#### FTP 서비스가 없는 경우
+```bash
+# FTP 서비스 미사용 확인 → N/A 처리 가능
+systemctl status vsftpd
+```
+
+#### vsftpd 배너 변경
+```bash
+# /etc/vsftpd/vsftpd.conf 편집
+ftpd_banner=FTP Service
+# 또는 버전 정보가 없는 메시지로 변경
+
+systemctl restart vsftpd
+```
+
+#### ProFTPD 배너 변경
+```bash
+# /etc/proftpd.conf 편집
+ServerIdent off
+# 또는
+ServerIdent on "FTP Service"
+
+systemctl restart proftpd
+```
+
+### 주의사항
+- FTP 서비스를 사용하지 않는 경우 N/A로 처리합니다.
+- 가능하면 FTP 대신 SFTP(SSH) 또는 FTPS를 사용하세요.
+
+---
+
+## U-56: FTP 서비스 접근 제어 설정
+
+### 취약점 설명
+FTP 서비스에 접근 제어가 설정되지 않으면 불특정 다수가 접근할 수 있어 보안 위험이 있습니다.
+
+**위험도**: LOW (하)
+
+### 점검 방법
+```bash
+# vsftpd 접근 제어 확인
+grep -E "userlist_enable|userlist_deny|tcp_wrappers|chroot_local_user" \
+    /etc/vsftpd/vsftpd.conf 2>/dev/null
+
+# tcp_wrappers 설정 확인
+grep -i ftp /etc/hosts.allow /etc/hosts.deny 2>/dev/null
+```
+
+### 조치 방법
+
+#### FTP 서비스가 없는 경우
+```bash
+# FTP 서비스 미사용 → N/A 처리 가능
+systemctl status vsftpd
+```
+
+#### vsftpd 접근 제어 설정
+```bash
+# /etc/vsftpd/vsftpd.conf 에 아래 설정 추가/수정
+
+# 허용 사용자 목록 파일 사용
+userlist_enable=YES
+userlist_deny=NO          # YES: 목록 계정 차단 / NO: 목록 계정만 허용
+userlist_file=/etc/vsftpd/user_list
+
+# 로컬 사용자 chroot 적용
+chroot_local_user=YES
+allow_writeable_chroot=NO
+
+systemctl restart vsftpd
+```
+
+#### 허용 사용자 목록 관리
+```bash
+# /etc/vsftpd/user_list 에 허용할 계정 추가
+echo "ftpuser" >> /etc/vsftpd/user_list
+```
+
+### 주의사항
+- FTP 서비스를 사용하지 않는 경우 N/A로 처리합니다.
+- anonymous FTP는 반드시 비활성화하세요: `anonymous_enable=NO`
 
 ---
 

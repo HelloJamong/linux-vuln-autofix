@@ -35,6 +35,31 @@ Status: FAIL
 Detail: [Risk: HIGH] faillock not configured in faillock.conf or pam.d
 Risk: HIGH
 --------------------------------------------------------------------------------
+[U-04] 비밀번호 파일 보호
+Status: PASS
+Detail: [Risk: HIGH] /etc/shadow owner=root, perm=000
+Risk: HIGH
+--------------------------------------------------------------------------------
+[U-05] root 이외의 UID가 '0' 금지
+Status: PASS
+Detail: [Risk: HIGH] No non-root accounts with UID 0 found
+Risk: HIGH
+--------------------------------------------------------------------------------
+[U-13] 안전한 비밀번호 암호화 알고리즘 사용
+Status: PASS
+Detail: [Risk: MEDIUM] ENCRYPT_METHOD is SHA512 (crypto-policies)
+Risk: MEDIUM
+--------------------------------------------------------------------------------
+[U-14] root 홈, 패스 디렉터리 권한 및 패스 설정
+Status: PASS
+Detail: [Risk: HIGH] Root PATH does not contain '.' or world-writable directories
+Risk: HIGH
+--------------------------------------------------------------------------------
+[U-28] 접속 IP 및 포트 제한
+Status: FAIL
+Detail: [Risk: MEDIUM] No active firewall (firewalld) detected;
+Risk: MEDIUM
+--------------------------------------------------------------------------------
 [U-52] Telnet 서비스 비활성화
 Status: N/A
 Detail: [Risk: MEDIUM] Telnet service is not installed or not applicable

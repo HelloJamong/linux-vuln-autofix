@@ -3484,9 +3484,89 @@ latest_check_u23() {
         log_result "$check_id" "$check_name" "FAIL" "[Risk: ${risk_level}] Files with SUID/SGID: ${vulnerable_files}"
     fi
 }
-latest_check_u24() { latest_run_legacy_check "U-24" "사용자, 시스템 환경변수 파일 소유자 및 권한 설정" check_u14; }
-latest_check_u25() { latest_run_legacy_check "U-25" "world writable 파일 점검" check_u15; }
-latest_check_u26() { latest_run_legacy_check "U-26" "/dev에 존재하지 않는 device 파일 점검" check_u16; }
+latest_check_u24() {
+    local check_id="U-24"
+    local check_name="사용자, 시스템 환경변수 파일 소유자 및 권한 설정"
+    local risk_level="HIGH"
+    local env_files=(".bashrc" ".bash_profile" ".profile" ".cshrc" ".login" ".kshrc" ".bash_login" ".zshrc")
+    local vulnerable_files="" found_count=0
+    while IFS=: read -r username _ uid _ _ homedir _; do
+        [ "$uid" -ge 1000 ] && [ -d "$homedir" ] || continue
+        for env_file in "${env_files[@]}"; do
+            local full_path="${homedir}/${env_file}"
+            [ -f "$full_path" ] || continue
+            local owner perm
+            owner=$(stat -c %U "$full_path" 2>/dev/null)
+            perm=$(stat -c %a "$full_path" 2>/dev/null)
+            if [[ "$owner" != "root" && "$owner" != "$username" ]]; then
+                vulnerable_files="${vulnerable_files}${full_path}(owner:${owner}), "
+                ((found_count++)); continue
+            fi
+            local last_digit=${perm: -1} second_digit=${perm:1:1}
+            if [[ "$last_digit" =~ [2367] || "$second_digit" =~ [2367] ]]; then
+                vulnerable_files="${vulnerable_files}${full_path}(perm:${perm}), "
+                ((found_count++))
+            fi
+        done
+    done < /etc/passwd
+    if [ -z "$vulnerable_files" ]; then
+        log_result "$check_id" "$check_name" "PASS" "[Risk: ${risk_level}] All environment files have proper owner and permissions"
+    elif [ "$found_count" -gt 10 ]; then
+        local display_files
+        display_files=$(echo "$vulnerable_files" | cut -d',' -f1-10)
+        log_result "$check_id" "$check_name" "FAIL" "[Risk: ${risk_level}] Found ${found_count} files with improper owner/permissions: ${display_files}, ... and $((found_count - 10)) more"
+    else
+        log_result "$check_id" "$check_name" "FAIL" "[Risk: ${risk_level}] Files with improper owner/permissions: ${vulnerable_files}"
+    fi
+}
+latest_check_u25() {
+    local check_id="U-25"
+    local check_name="world writable 파일 점검"
+    local risk_level="HIGH"
+    local critical_paths=("/etc" "/bin" "/sbin" "/usr/bin" "/usr/sbin" "/usr/local/bin" "/usr/local/sbin")
+    local writable_files="" found_count=0
+    for path in "${critical_paths[@]}"; do
+        [ -d "$path" ] || continue
+        local files
+        files=$(find "$path" -type f -perm -002 ! -perm -1000 2>/dev/null)
+        [ -n "$files" ] || continue
+        while IFS= read -r file; do
+            local perm
+            perm=$(stat -c %a "$file" 2>/dev/null)
+            writable_files="${writable_files}${file}(${perm}), "
+            ((found_count++))
+        done <<< "$files"
+    done
+    if [ -z "$writable_files" ]; then
+        log_result "$check_id" "$check_name" "PASS" "[Risk: ${risk_level}] No world writable files found in critical directories"
+    elif [ "$found_count" -gt 10 ]; then
+        local display_files
+        display_files=$(echo "$writable_files" | cut -d',' -f1-10)
+        log_result "$check_id" "$check_name" "FAIL" "[Risk: ${risk_level}] Found ${found_count} world writable files: ${display_files}, ... and $((found_count - 10)) more"
+    else
+        log_result "$check_id" "$check_name" "FAIL" "[Risk: ${risk_level}] World writable files: ${writable_files}"
+    fi
+}
+latest_check_u26() {
+    local check_id="U-26"
+    local check_name="/dev에 존재하지 않는 device 파일 점검"
+    local risk_level="HIGH"
+    if [ ! -d "/dev" ]; then
+        log_result "$check_id" "$check_name" "FAIL" "[Risk: ${risk_level}] /dev directory does not exist"
+        return
+    fi
+    local unusual_files
+    unusual_files=$(find /dev -type f 2>/dev/null | head -20)
+    if [ -z "$unusual_files" ]; then
+        log_result "$check_id" "$check_name" "PASS" "[Risk: ${risk_level}] No unusual device files found"
+    else
+        local file_count file_list
+        file_count=$(echo "$unusual_files" | wc -l)
+        file_list=$(echo "$unusual_files" | head -10 | tr '\n' ', ' | sed 's/,$//')
+        [ "$file_count" -gt 10 ] && file_list="${file_list} ... and $((file_count - 10)) more"
+        log_result "$check_id" "$check_name" "FAIL" "[Risk: ${risk_level}] Found ${file_count} unusual files in /dev: ${file_list}"
+    fi
+}
 latest_check_u27() { latest_run_legacy_check "U-27" "\$HOME/.rhosts, hosts.equiv 사용 금지" check_u17; }
 latest_check_u28() {
     local check_id="U-28"
@@ -3527,7 +3607,26 @@ latest_check_u28() {
             "[Risk: ${risk_level}] ${issues}"
     fi
 }
-latest_check_u29() { latest_run_legacy_check "U-29" "hosts.lpd 파일 소유자 및 권한 설정" check_u55; }
+latest_check_u29() {
+    local check_id="U-29"
+    local check_name="hosts.lpd 파일 소유자 및 권한 설정"
+    local risk_level="LOW"
+    local hosts_lpd="/etc/hosts.lpd"
+    if [ ! -f "$hosts_lpd" ]; then
+        log_result "$check_id" "$check_name" "N/A" "[Risk: ${risk_level}] /etc/hosts.lpd file does not exist"
+        return
+    fi
+    local owner perm fail_reasons=""
+    owner=$(stat -c %U "$hosts_lpd")
+    perm=$(stat -c %a "$hosts_lpd")
+    [ "$owner" != "root" ] && fail_reasons="${fail_reasons}owner is ${owner} (should be root), "
+    [ "$perm" -gt 600 ] && fail_reasons="${fail_reasons}permission is ${perm} (should be 600 or less)"
+    if [ -z "$fail_reasons" ]; then
+        log_result "$check_id" "$check_name" "PASS" "[Risk: ${risk_level}] Owner: ${owner}, Permission: ${perm}"
+    else
+        log_result "$check_id" "$check_name" "FAIL" "[Risk: ${risk_level}] ${fail_reasons}"
+    fi
+}
 latest_check_u30() {
     local check_id="U-30"
     local check_name="UMASK 설정 관리"
@@ -3556,8 +3655,51 @@ latest_check_u30() {
         log_result "$check_id" "$check_name" "FAIL" "[Risk: ${risk_level}] UMASK is not configured"
     fi
 }
-latest_check_u31() { latest_run_legacy_check "U-31" "홈디렉토리 소유자 및 권한 설정" check_u57; }
-latest_check_u32() { latest_run_legacy_check "U-32" "홈 디렉토리로 지정한 디렉토리의 존재 관리" check_u58; }
+latest_check_u31() {
+    local check_id="U-31"
+    local check_name="홈디렉토리 소유자 및 권한 설정"
+    local risk_level="MEDIUM"
+    local vulnerable_dirs="" count=0
+    while IFS=: read -r username _ uid _ _ homedir _; do
+        [ "$uid" -ge 1000 ] && [ -d "$homedir" ] || continue
+        local owner perm
+        owner=$(stat -c %U "$homedir" 2>/dev/null)
+        perm=$(stat -c %a "$homedir" 2>/dev/null)
+        if [ "$owner" != "$username" ]; then
+            vulnerable_dirs="${vulnerable_dirs}${homedir}(owner:${owner}), "
+            ((count++)); continue
+        fi
+        local last_digit=${perm: -1}
+        if [ "$last_digit" -gt 0 ]; then
+            vulnerable_dirs="${vulnerable_dirs}${homedir}(perm:${perm}), "
+            ((count++))
+        fi
+    done < /etc/passwd
+    if [ -z "$vulnerable_dirs" ]; then
+        log_result "$check_id" "$check_name" "PASS" "[Risk: ${risk_level}] All home directories have proper owner and permissions"
+    else
+        log_result "$check_id" "$check_name" "FAIL" "[Risk: ${risk_level}] Vulnerable directories (${count}): ${vulnerable_dirs}"
+    fi
+}
+latest_check_u32() {
+    local check_id="U-32"
+    local check_name="홈 디렉토리로 지정한 디렉토리의 존재 관리"
+    local risk_level="MEDIUM"
+    local missing_dirs="" count=0
+    while IFS=: read -r username _ uid _ _ homedir shell; do
+        if [[ "$shell" != "/sbin/nologin" && "$shell" != "/bin/false" && "$shell" != "/usr/sbin/nologin" ]]; then
+            if [ ! -d "$homedir" ]; then
+                missing_dirs="${missing_dirs}${username}(${homedir}), "
+                ((count++))
+            fi
+        fi
+    done < /etc/passwd
+    if [ -z "$missing_dirs" ]; then
+        log_result "$check_id" "$check_name" "PASS" "[Risk: ${risk_level}] All user home directories exist"
+    else
+        log_result "$check_id" "$check_name" "FAIL" "[Risk: ${risk_level}] Missing home directories (${count}): ${missing_dirs}"
+    fi
+}
 latest_check_u33() {
     local check_id="U-33"
     local check_name="숨겨진 파일 및 디렉토리 검색 및 제거"
