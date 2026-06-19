@@ -7,44 +7,47 @@
 
 ---
 
-## 진행 현황 (2026-06-19 기준)
+## 진행 현황 (2026-06-19 최종 기준)
 
-### ✅ 완료
+### ✅ 완료 (전체)
 
-| 항목 | 내용 | 커밋 |
-|---|---|---|
-| L1-T1 | U-03 `CAP_FAILLOCK_CONF` 분기, Rocky 8 pam.d fallback | feat: Linux 점검... |
-| L1-T2 | U-65 `CAP_TIME_SYNC` 기반 NTP 서비스 확인 | 동일 |
-| L1-T3 | Rocky 8.10 기준 `linux_check_rocky8.fixture` 생성 | 동일 |
-| L2-T1 | U-01 레거시 래퍼 → 직접 구현 (PermitRootLogin 파싱) | 동일 |
-| L2-T2 | U-04 레거시 래퍼 → 직접 구현 (passwd shadow 확인) | 동일 |
-| L2-T3 | U-14 root PATH/홈 직접 구현, check_u05 의미 불일치 해소 | 동일 |
-| L3-T1 | U-28 `ip_forward=0`, `tcp_syncookies=1`, firewall 점검 신규 추가 | 동일 |
-| L3-T2 | U-33 `.netrc` 스캔 + 소유자 없는 숨김 파일 직접 구현 | 동일 |
+| 우선순위 | 항목 | 분류 | 내용 | 커밋 |
+|---|---|---|---|---|
+| — | L1-T1 | OS 분기 | U-03 `CAP_FAILLOCK_CONF` 분기, Rocky 8 pam.d fallback | feat: Linux 점검... |
+| — | L1-T2 | OS 분기 | U-65 `CAP_TIME_SYNC` 기반 NTP 서비스 확인 | 동일 |
+| — | L1-T3 | Fixture | Rocky 8.10 기준 `linux_check_rocky8.fixture` 생성 | 동일 |
+| — | L2-T1 | 레거시 전환 | U-01 레거시 래퍼 → 직접 구현 (PermitRootLogin 파싱) | 동일 |
+| — | L2-T2 | 레거시 전환 | U-04 레거시 래퍼 → 직접 구현 (passwd shadow 확인) | 동일 |
+| — | L2-T3 | 레거시 전환 | U-14 root PATH/홈 직접 구현, check_u05 의미 불일치 해소 | 동일 |
+| — | L3-T1 | 점검 보강 | U-28 `ip_forward=0`, `tcp_syncookies=1`, firewall 점검 신규 | 동일 |
+| — | L3-T2 | 점검 보강 | U-33 `.netrc` 스캔 + 소유자 없는 숨김 파일 직접 구현 | 동일 |
+| HIGH | Phase 1-A | 헤더 | `linux_vuln_check.sh`, `linux_vuln_fix.sh` 헤더 "RHEL/Rocky Linux 9" → "Rocky Linux 8.10/9.x" | fix: HIGH 우선순위... |
+| HIGH | Phase 1-B | 문서 | `CHANGELOG.md` `yourusername` URL → `HelloJamong` 교체, 표기 통일 | 동일 |
+| HIGH | GAP-L1 | OS 분기 | U-02 pwquality.conf 없는 경우 pam.d inline 설정 fallback (Rocky 8) | 동일 |
+| HIGH | GAP-L1 | OS 분기 | U-13 `CAP_CRYPTO_POLICIES=true` 시 `libuser.config` 우선 확인 (Rocky 9) | 동일 |
+| MEDIUM | GAP-L2 | 레거시 전환 | U-23 SUID/SGID 직접 구현 전환 (`check_id="U-23"` 직접 사용) | feat: MEDIUM... |
+| MEDIUM | GAP-L2 | 레거시 전환 | U-30 UMASK 직접 구현, `/etc/profile.d/*.sh` 스캔 추가 | 동일 |
+| MEDIUM | GAP-L2 | 레거시 전환 | U-62 경고 메시지 직접 구현 전환 | 동일 |
+| MEDIUM | GAP-D2 | DB | D-08 MariaDB 10.4+ `mysql.global_priv` JSON 인증 플러그인 분기 | 동일 |
+| MEDIUM | GAP-D3 | DB | `db_vuln_fix.sh` fix_mx01~fix_mx16 함수 및 MX-* fallback 인자 전체 제거 | 동일 |
+| MEDIUM | Phase 6 | CI | `.github/workflows/lint.yml` shellcheck + `bash -n` 추가 | 동일 |
+| LOW | Phase 5 | 문서 | `linux_manual_fix_guide.md` U-06→U-15, U-13→U-23 등 6개 ID 갱신 | docs: 수동 조치... |
+| LOW | Phase 5 | 문서 | `mysql_manual_fix_guide.md` MX-* → D-* 전면 갱신 | 동일 |
+| LOW | Phase 1-C | 문서 | `README.md` 이미 "Rocky Linux 8.10/9.x" 표기 — 확인 완료 | 해당 없음 |
 
-### 🔲 진행 필요
+### 🔲 추가 진행 필요
 
 | 우선순위 | 항목 | 분류 | 내용 |
 |---|---|---|---|
-| HIGH | **Phase 1-A** | 헤더 | `linux_vuln_check.sh`, `linux_vuln_fix.sh` 헤더 주석 "RHEL/Rocky Linux 9" → "Rocky Linux 8.10/9.x" |
-| HIGH | **Phase 1-B** | 문서 | `CHANGELOG.md` `yourusername` placeholder URL 교체 |
-| HIGH | **GAP-L1 잔여** | OS 분기 | U-02 `CAP_AUTHSELECT` 없는 Rocky 8 환경 pwquality 로드 확인 |
-| HIGH | **GAP-L1 잔여** | OS 분기 | U-13 `CAP_CRYPTO_POLICIES` 기반 hash algorithm 분기 |
-| MEDIUM | **GAP-L2 잔여** | 레거시 전환 | U-23 SUID/SGID Rocky 8/9 기본 목록 차이 반영 |
-| MEDIUM | **GAP-L2 잔여** | 레거시 전환 | U-30 UMASK login.defs/profile.d 직접 점검 |
-| MEDIUM | **GAP-L2 잔여** | 레거시 전환 | U-62 /etc/motd, /etc/issue 경고 메시지 직접 점검 |
-| MEDIUM | **GAP-D1** | DB | KISA 최신 가이드 D-05, D-09, D-12~D-24 범위 확인 및 구현/N/A 결정 |
-| MEDIUM | **GAP-D2** | DB | MariaDB 10.x/11.x 암호화 플러그인 분기 (D-08) |
-| MEDIUM | **GAP-D3** | DB | `db_vuln_fix.sh` MX-* fallback 코드 제거 |
-| MEDIUM | **Phase 6** | CI | `.github/workflows/lint.yml` shellcheck + `bash -n` 추가 |
-| LOW | **Phase 5** | 문서 | `linux_manual_fix_guide.md` U-01~U-67 기준 목차 갱신 |
-| LOW | **Phase 5** | 문서 | `mysql_manual_fix_guide.md` D-* 체계 전면 갱신 |
-| LOW | **Phase 1-C** | 문서 | `README.md` 지원 OS "Rocky Linux 8.10 및 9.x" 명시 |
+| MEDIUM | **GAP-D1** | DB | D-05, D-09, D-12~D-13, D-15~D-20, D-22~D-24 — KISA 2026 가이드 원문 확인 후 구현 또는 N/A 결정 필요 |
+| LOW | **레거시 래퍼 잔여** | 코드 품질 | `latest_run_legacy_check` 41개 잔존 — 우선순위 항목(U-24 등) 추가 직접 전환 검토 |
+| LOW | **linux_manual_fix_guide.md** | 문서 | U-53~U-57 구 번호 → 신규 ID 매핑 미확정 (mapping_guide에 대응 없음) |
+| LOW | **테스트 보강** | 품질 | Rocky 8.10 fixture 항목 확장 (현재 U-01/02/03/52/65 5개만 포함) |
 
 ### 레거시 매핑 잔존 현황
 
-최초 50개 → 현재 **44개** (6개 직접 전환 완료)  
-잔여 44개 중 의미 검증 필요 우선 항목: U-23, U-24, U-30, U-62
+최초 50개 → 현재 **41개** (9개 직접 전환 완료)  
+잔여 41개 중 의미 검증 권장 항목: U-24, U-25, U-26, U-29~U-32
 
 ---
 
