@@ -3456,7 +3456,34 @@ latest_check_u19() { latest_run_legacy_check "U-19" "/etc/hosts 파일 소유자
 latest_check_u20() { latest_run_legacy_check "U-20" "/etc/(x)inetd.conf 파일 소유자 및 권한 설정" check_u10; }
 latest_check_u21() { latest_run_legacy_check "U-21" "/etc/(r)syslog.conf 파일 소유자 및 권한 설정" check_u11; }
 latest_check_u22() { latest_run_legacy_check "U-22" "/etc/services 파일 소유자 및 권한 설정" check_u12; }
-latest_check_u23() { latest_run_legacy_check "U-23" "SUID, SGID, Sticky bit 설정 파일 점검" check_u13; }
+latest_check_u23() {
+    local check_id="U-23"
+    local check_name="SUID, SGID, Sticky bit 설정 파일 점검"
+    local risk_level="HIGH"
+    local critical_files=(
+        "/sbin/dump" "/sbin/restore" "/sbin/unix_chkpwd"
+        "/usr/bin/at" "/usr/bin/lpq" "/usr/bin/lpq-lpd"
+        "/usr/bin/lpr" "/usr/bin/lpr-lpd" "/usr/bin/lprm" "/usr/bin/lprm-lpd"
+        "/usr/bin/newgrp" "/usr/sbin/traceroute"
+        "/usr/bin/traceroute6" "/usr/bin/traceroute6.iputils"
+    )
+    local vulnerable_files="" found_count=0
+    for file in "${critical_files[@]}"; do
+        [ -f "$file" ] || continue
+        local perm first_digit
+        perm=$(stat -c %a "$file" 2>/dev/null)
+        first_digit="${perm:0:1}"
+        if [[ "$first_digit" == "4" || "$first_digit" == "2" || "$first_digit" == "6" ]]; then
+            vulnerable_files="${vulnerable_files}${file}(${perm}), "
+            ((found_count++))
+        fi
+    done
+    if [ -z "$vulnerable_files" ]; then
+        log_result "$check_id" "$check_name" "PASS" "[Risk: ${risk_level}] No critical files with SUID/SGID found"
+    else
+        log_result "$check_id" "$check_name" "FAIL" "[Risk: ${risk_level}] Files with SUID/SGID: ${vulnerable_files}"
+    fi
+}
 latest_check_u24() { latest_run_legacy_check "U-24" "사용자, 시스템 환경변수 파일 소유자 및 권한 설정" check_u14; }
 latest_check_u25() { latest_run_legacy_check "U-25" "world writable 파일 점검" check_u15; }
 latest_check_u26() { latest_run_legacy_check "U-26" "/dev에 존재하지 않는 device 파일 점검" check_u16; }
@@ -3501,7 +3528,34 @@ latest_check_u28() {
     fi
 }
 latest_check_u29() { latest_run_legacy_check "U-29" "hosts.lpd 파일 소유자 및 권한 설정" check_u55; }
-latest_check_u30() { latest_run_legacy_check "U-30" "UMASK 설정 관리" check_u56; }
+latest_check_u30() {
+    local check_id="U-30"
+    local check_name="UMASK 설정 관리"
+    local risk_level="MEDIUM"
+    local config_files=("/etc/profile" "/etc/bashrc" "/etc/bash.bashrc" "/etc/login.defs")
+    while IFS= read -r f; do config_files+=("$f"); done \
+        < <(find /etc/profile.d -maxdepth 1 -name '*.sh' 2>/dev/null | sort)
+    local umask_set=false umask_value=""
+    for config in "${config_files[@]}"; do
+        [ -f "$config" ] || continue
+        local umask_line
+        umask_line=$(grep "^[[:space:]]*umask" "$config" 2>/dev/null | grep -v "^[[:space:]]*#" | tail -1)
+        if [ -n "$umask_line" ]; then
+            umask_set=true
+            umask_value=$(echo "$umask_line" | awk '{print $2}')
+            break
+        fi
+    done
+    if [ "$umask_set" = true ]; then
+        if [[ "$umask_value" == "022" || "$umask_value" == "027" ]]; then
+            log_result "$check_id" "$check_name" "PASS" "[Risk: ${risk_level}] UMASK is set to ${umask_value}"
+        else
+            log_result "$check_id" "$check_name" "FAIL" "[Risk: ${risk_level}] UMASK is ${umask_value} (should be 022 or 027)"
+        fi
+    else
+        log_result "$check_id" "$check_name" "FAIL" "[Risk: ${risk_level}] UMASK is not configured"
+    fi
+}
 latest_check_u31() { latest_run_legacy_check "U-31" "홈디렉토리 소유자 및 권한 설정" check_u57; }
 latest_check_u32() { latest_run_legacy_check "U-32" "홈 디렉토리로 지정한 디렉토리의 존재 관리" check_u58; }
 latest_check_u33() {
@@ -3552,7 +3606,27 @@ latest_check_u55() { latest_run_legacy_check "U-55" "FTP 계정 Shell 제한" ch
 latest_check_u57() { latest_run_legacy_check "U-57" "Ftpusers 파일 설정" check_u64; }
 # latest_check_u58 is implemented directly above.
 # latest_check_u60 is implemented directly above.
-latest_check_u62() { latest_run_legacy_check "U-62" "로그인 시 경고 메시지 설정" check_u68; }
+latest_check_u62() {
+    local check_id="U-62"
+    local check_name="로그인 시 경고 메시지 설정"
+    local risk_level="LOW"
+    local message_files=("/etc/motd" "/etc/issue" "/etc/issue.net")
+    local message_found=false
+    for msg_file in "${message_files[@]}"; do
+        [ -f "$msg_file" ] || continue
+        local content
+        content=$(grep -v "^$" "$msg_file" 2>/dev/null)
+        if [ -n "$content" ]; then
+            message_found=true
+            break
+        fi
+    done
+    if [ "$message_found" = true ]; then
+        log_result "$check_id" "$check_name" "PASS" "[Risk: ${risk_level}] Login warning message is configured"
+    else
+        log_result "$check_id" "$check_name" "FAIL" "[Risk: ${risk_level}] No login warning message configured"
+    fi
+}
 # latest_check_u64 is implemented directly above.
 latest_check_u66() { latest_run_legacy_check "U-66" "정책에 따른 시스템 로깅 설정" check_u72; }
 

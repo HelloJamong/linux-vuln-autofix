@@ -345,290 +345,10 @@ execute_query_result() {
 }
 
 #===============================================================================
-# 조치 함수들 (MX-01 ~ MX-16)
+# Latest 2026 KISA DBMS remediation layer — D-* codes only
+# (MX-01~MX-16 legacy functions removed; result files use D-* IDs)
 #===============================================================================
 
-# MX-01: Root 원격 접속 제한
-fix_mx01() {
-    local check_id="MX-01"
-    local check_name="Root Remote Access Restriction"
-
-    if ! is_failed "$check_id"; then
-        log_fix_result "$check_id" "$check_name" "SKIPPED" "Already passed or N/A"
-        return
-    fi
-
-    # root 계정의 원격 접속 제거
-    local result=$(execute_query "DELETE FROM mysql.user WHERE user='root' AND host NOT IN ('localhost', '127.0.0.1', '::1');")
-
-    if [ $? -eq 0 ]; then
-        execute_query "FLUSH PRIVILEGES;" >/dev/null 2>&1
-        log_fix_result "$check_id" "$check_name" "SUCCESS" "Root remote access removed, privileges flushed"
-    else
-        log_fix_result "$check_id" "$check_name" "FAILED" "Failed to remove root remote access: $result"
-    fi
-}
-
-# MX-02: 익명 계정 제거
-fix_mx02() {
-    local check_id="MX-02"
-    local check_name="Anonymous Account Removal"
-
-    if ! is_failed "$check_id"; then
-        log_fix_result "$check_id" "$check_name" "SKIPPED" "Already passed or N/A"
-        return
-    fi
-
-    # 익명 계정 삭제
-    local result=$(execute_query "DELETE FROM mysql.user WHERE user='';")
-
-    if [ $? -eq 0 ]; then
-        execute_query "FLUSH PRIVILEGES;" >/dev/null 2>&1
-        log_fix_result "$check_id" "$check_name" "SUCCESS" "Anonymous accounts removed, privileges flushed"
-    else
-        log_fix_result "$check_id" "$check_name" "FAILED" "Failed to remove anonymous accounts: $result"
-    fi
-}
-
-# MX-03: 불필요한 기본 계정 제거
-fix_mx03() {
-    local check_id="MX-03"
-    local check_name="Unnecessary Default Accounts Removal"
-
-    if ! is_failed "$check_id"; then
-        log_fix_result "$check_id" "$check_name" "SKIPPED" "Already passed or N/A"
-        return
-    fi
-
-    # 수동 조치 필요 (계정 삭제는 신중해야 함)
-    log_fix_result "$check_id" "$check_name" "FAILED" "Manual intervention required. Review and remove unnecessary accounts"
-}
-
-# MX-04: 패스워드가 없는 계정 제거
-fix_mx04() {
-    local check_id="MX-04"
-    local check_name="Empty Password Accounts"
-
-    if ! is_failed "$check_id"; then
-        log_fix_result "$check_id" "$check_name" "SKIPPED" "Already passed or N/A"
-        return
-    fi
-
-    # 수동 조치 필요 (패스워드 설정 또는 계정 삭제)
-    local empty_pass_users=$(execute_query_result "SELECT user, host FROM mysql.user WHERE authentication_string='' OR authentication_string IS NULL;")
-
-    if [ -n "$empty_pass_users" ]; then
-        log_fix_result "$check_id" "$check_name" "FAILED" "Manual intervention required. Set passwords or remove accounts: $empty_pass_users"
-    else
-        log_fix_result "$check_id" "$check_name" "SKIPPED" "No empty password accounts found"
-    fi
-}
-
-# MX-05: 패스워드 복잡도 정책
-fix_mx05() {
-    local check_id="MX-05"
-    local check_name="Password Complexity Policy"
-
-    if ! is_failed "$check_id"; then
-        log_fix_result "$check_id" "$check_name" "SKIPPED" "Already passed or N/A"
-        return
-    fi
-
-    # validate_password 플러그인 활성화 및 정책 설정
-    local plugin_check=$(execute_query_result "SELECT PLUGIN_NAME FROM INFORMATION_SCHEMA.PLUGINS WHERE PLUGIN_NAME='validate_password';")
-
-    if [ -z "$plugin_check" ]; then
-        # 플러그인 설치 시도
-        execute_query "INSTALL PLUGIN validate_password SONAME 'validate_password.so';" 2>/dev/null
-    fi
-
-    # 정책 설정
-    execute_query "SET GLOBAL validate_password.length = 8;" 2>/dev/null
-    execute_query "SET GLOBAL validate_password.mixed_case_count = 1;" 2>/dev/null
-    execute_query "SET GLOBAL validate_password.number_count = 1;" 2>/dev/null
-    execute_query "SET GLOBAL validate_password.special_char_count = 1;" 2>/dev/null
-    execute_query "SET GLOBAL validate_password.policy = MEDIUM;" 2>/dev/null
-
-    # MariaDB 10.4+ 버전용 (cracklib_password_check)
-    execute_query "SET GLOBAL simple_password_check_minimal_length = 8;" 2>/dev/null
-
-    log_fix_result "$check_id" "$check_name" "SUCCESS" "Password complexity policy configured (length=8, mixed case, numbers, special chars)"
-}
-
-# MX-06: 계정 권한 최소화
-fix_mx06() {
-    local check_id="MX-06"
-    local check_name="Account Privilege Minimization"
-
-    if ! is_failed "$check_id"; then
-        log_fix_result "$check_id" "$check_name" "SKIPPED" "Already passed or N/A"
-        return
-    fi
-
-    # 수동 조치 필요 (권한 검토 후 조정)
-    log_fix_result "$check_id" "$check_name" "FAILED" "Manual intervention required. Review and minimize account privileges"
-}
-
-# MX-07: 불필요한 SUPER 권한 제거
-fix_mx07() {
-    local check_id="MX-07"
-    local check_name="Unnecessary SUPER Privilege Removal"
-
-    if ! is_failed "$check_id"; then
-        log_fix_result "$check_id" "$check_name" "SKIPPED" "Already passed or N/A"
-        return
-    fi
-
-    # 수동 조치 필요 (SUPER 권한 검토)
-    log_fix_result "$check_id" "$check_name" "FAILED" "Manual intervention required. Review SUPER privilege grants"
-}
-
-# MX-08: test 데이터베이스 제거
-fix_mx08() {
-    local check_id="MX-08"
-    local check_name="Test Database Removal"
-
-    if ! is_failed "$check_id"; then
-        log_fix_result "$check_id" "$check_name" "SKIPPED" "Already passed or N/A"
-        return
-    fi
-
-    # test 데이터베이스 존재 확인
-    local test_db=$(execute_query_result "SHOW DATABASES LIKE 'test';")
-
-    if [ -n "$test_db" ]; then
-        # test 데이터베이스 삭제
-        local result=$(execute_query "DROP DATABASE IF EXISTS test;")
-
-        if [ $? -eq 0 ]; then
-            log_fix_result "$check_id" "$check_name" "SUCCESS" "Test database removed"
-        else
-            log_fix_result "$check_id" "$check_name" "FAILED" "Failed to remove test database: $result"
-        fi
-    else
-        log_fix_result "$check_id" "$check_name" "SKIPPED" "Test database does not exist"
-    fi
-}
-
-# MX-09: FILE 권한 제한
-fix_mx09() {
-    local check_id="MX-09"
-    local check_name="FILE Privilege Restriction"
-
-    if ! is_failed "$check_id"; then
-        log_fix_result "$check_id" "$check_name" "SKIPPED" "Already passed or N/A"
-        return
-    fi
-
-    # 수동 조치 필요 (FILE 권한 검토)
-    log_fix_result "$check_id" "$check_name" "FAILED" "Manual intervention required. Review and revoke FILE privileges where not needed"
-}
-
-# MX-10: secure_file_priv 설정
-fix_mx10() {
-    local check_id="MX-10"
-    local check_name="Secure File Privileges Configuration"
-
-    if ! is_failed "$check_id"; then
-        log_fix_result "$check_id" "$check_name" "SKIPPED" "Already passed or N/A"
-        return
-    fi
-
-    # secure_file_priv는 my.cnf에서만 설정 가능 (동적 변경 불가)
-    log_fix_result "$check_id" "$check_name" "FAILED" "Manual intervention required. Add 'secure_file_priv=/var/lib/mysql-files/' to my.cnf and restart MySQL"
-}
-
-# MX-11: 에러 로그 활성화
-fix_mx11() {
-    local check_id="MX-11"
-    local check_name="Error Log Enable"
-
-    if ! is_failed "$check_id"; then
-        log_fix_result "$check_id" "$check_name" "SKIPPED" "Already passed or N/A"
-        return
-    fi
-
-    # log_error는 my.cnf에서만 설정 가능
-    log_fix_result "$check_id" "$check_name" "FAILED" "Manual intervention required. Add 'log_error=/var/log/mysql/error.log' to my.cnf and restart MySQL"
-}
-
-# MX-12: General Log 설정
-fix_mx12() {
-    local check_id="MX-12"
-    local check_name="General Log Configuration"
-
-    if ! is_failed "$check_id"; then
-        log_fix_result "$check_id" "$check_name" "SKIPPED" "Already passed or N/A"
-        return
-    fi
-
-    # General log는 성능에 영향을 주므로 수동 조치 권장
-    log_fix_result "$check_id" "$check_name" "FAILED" "Manual intervention required. Enable general_log in my.cnf if needed (impacts performance)"
-}
-
-# MX-13: Slow Query Log 설정
-fix_mx13() {
-    local check_id="MX-13"
-    local check_name="Slow Query Log Configuration"
-
-    if ! is_failed "$check_id"; then
-        log_fix_result "$check_id" "$check_name" "SKIPPED" "Already passed or N/A"
-        return
-    fi
-
-    # Slow query log 활성화 (동적 설정 가능)
-    execute_query "SET GLOBAL slow_query_log = 'ON';" 2>/dev/null
-    execute_query "SET GLOBAL long_query_time = 2;" 2>/dev/null
-    execute_query "SET GLOBAL log_queries_not_using_indexes = 'ON';" 2>/dev/null
-
-    log_fix_result "$check_id" "$check_name" "SUCCESS" "Slow query log enabled (long_query_time=2s, log queries not using indexes)"
-}
-
-# MX-14: 최신 버전 업데이트
-fix_mx14() {
-    local check_id="MX-14"
-    local check_name="MySQL Version Update"
-
-    if ! is_failed "$check_id"; then
-        log_fix_result "$check_id" "$check_name" "SKIPPED" "Already passed or N/A"
-        return
-    fi
-
-    # 수동 조치 필요 (버전 업데이트)
-    log_fix_result "$check_id" "$check_name" "FAILED" "Manual intervention required. Update MySQL/MariaDB to the latest version"
-}
-
-# MX-15: 불필요한 플러그인 제거
-fix_mx15() {
-    local check_id="MX-15"
-    local check_name="Unnecessary Plugin Removal"
-
-    if ! is_failed "$check_id"; then
-        log_fix_result "$check_id" "$check_name" "SKIPPED" "Already passed or N/A"
-        return
-    fi
-
-    # 수동 조치 필요 (플러그인 검토)
-    log_fix_result "$check_id" "$check_name" "FAILED" "Manual intervention required. Review and uninstall unnecessary plugins"
-}
-
-# MX-16: bind-address 설정
-fix_mx16() {
-    local check_id="MX-16"
-    local check_name="Network Binding Configuration"
-
-    if ! is_failed "$check_id"; then
-        log_fix_result "$check_id" "$check_name" "SKIPPED" "Already passed or N/A"
-        return
-    fi
-
-    # bind-address는 my.cnf에서만 설정 가능
-    log_fix_result "$check_id" "$check_name" "FAILED" "Manual intervention required. Add 'bind-address=127.0.0.1' to my.cnf for localhost-only access and restart MySQL"
-}
-
-#===============================================================================
-# Latest 2026 KISA DBMS remediation layer for MySQL/MariaDB (D-* codes)
-#===============================================================================
 
 d_status_for() {
     local id="$1"
@@ -666,12 +386,12 @@ d_manual_fix() {
 
 fix_d01() {
     local id="D-01" name="기본 계정의 비밀번호, 정책 등을 변경하여 사용"
-    d_manual_fix "$id" "$name" "Change default/root account passwords and lock unused default accounts." "MX-03"
+    d_manual_fix "$id" "$name" "Change default/root account passwords and lock unused default accounts."
 }
 
 fix_d02() {
     local id="D-02" name="데이터베이스의 불필요 계정을 제거하거나, 잠금설정 후 사용"
-    if ! d_is_failed "$id" "MX-02" "MX-07" "MX-08"; then
+    if ! d_is_failed "$id"; then
         log_fix_result "$id" "$name" "SKIPPED" "Already passed or N/A"
         return
     fi
@@ -692,7 +412,7 @@ fix_d02() {
 
 fix_d03() {
     local id="D-03" name="비밀번호 사용 기간 및 복잡도를 기관의 정책에 맞도록 설정"
-    if ! d_is_failed "$id" "MX-04"; then
+    if ! d_is_failed "$id"; then
         log_fix_result "$id" "$name" "SKIPPED" "Already passed or N/A"
         return
     fi
@@ -712,15 +432,15 @@ fix_d03() {
     log_fix_result "$id" "$name" "SUCCESS" "Password complexity/lifetime settings attempted; persist equivalent settings in my.cnf/my.ini if required"
 }
 
-fix_d04() { d_manual_fix "D-04" "데이터베이스 관리자 권한을 꼭 필요한 계정 및 그룹에 대해서만 허용" "Review accounts with SUPER/GRANT/global admin privileges and revoke unnecessary privileges." "MX-05"; }
+fix_d04() { d_manual_fix "D-04" "데이터베이스 관리자 권한을 꼭 필요한 계정 및 그룹에 대해서만 허용" "Review accounts with SUPER/GRANT/global admin privileges and revoke unnecessary privileges."; }
 fix_d06() { d_manual_fix "D-06" "DB 사용자 계정을 개별적으로 부여하여 사용" "Replace shared DB accounts with named user/application accounts and least-privilege grants."; }
 fix_d07() { d_manual_fix "D-07" "root 권한으로 서비스 구동 제한" "Configure mysqld/mariadbd service to run as the mysql/mariadb OS account, not root."; }
 fix_d08() { d_manual_fix "D-08" "안전한 암호화 알고리즘 사용" "Migrate weak authentication plugins/hashes to current secure MySQL/MariaDB authentication methods."; }
-fix_d10() { d_manual_fix "D-10" "원격에서 DB 서버로의 접속 제한" "Restrict root/wildcard hosts and bind-address to approved interfaces/IPs; avoid disrupting application connectivity." "MX-01" "MX-06" "MX-15" "MX-16"; }
-fix_d11() { d_manual_fix "D-11" "DBA 이외의 인가되지 않은 사용자가 시스템 테이블에 접근할 수 없도록 설정" "Review broad/global SELECT and system schema access; grant only required database/table privileges." "MX-05"; }
-fix_d14() { d_manual_fix "D-14" "데이터베이스의 주요 설정 파일, 비밀번호 파일 등과 같은 주요 파일들의 접근 권한이 적절하게 설정" "Set my.cnf/my.ini and credential files to restricted owner/mode such as root/mysql with 600 or 640 as appropriate." "MX-09" "MX-10"; }
+fix_d10() { d_manual_fix "D-10" "원격에서 DB 서버로의 접속 제한" "Restrict root/wildcard hosts and bind-address to approved interfaces/IPs; avoid disrupting application connectivity."; }
+fix_d11() { d_manual_fix "D-11" "DBA 이외의 인가되지 않은 사용자가 시스템 테이블에 접근할 수 없도록 설정" "Review broad/global SELECT and system schema access; grant only required database/table privileges."; }
+fix_d14() { d_manual_fix "D-14" "데이터베이스의 주요 설정 파일, 비밀번호 파일 등과 같은 주요 파일들의 접근 권한이 적절하게 설정" "Set my.cnf/my.ini and credential files to restricted owner/mode such as root/mysql with 600 or 640 as appropriate."; }
 fix_d21() { d_manual_fix "D-21" "인가되지 않은 GRANT OPTION 사용 제한" "Revoke unauthorized GRANT OPTION and re-grant privileges through approved roles/accounts only."; }
-fix_d25() { d_manual_fix "D-25" "주기적 보안 패치 및 벤더 권고 사항 적용" "Upgrade MySQL/MariaDB to a vendor-supported version with current security patches." "MX-14"; }
+fix_d25() { d_manual_fix "D-25" "주기적 보안 패치 및 벤더 권고 사항 적용" "Upgrade MySQL/MariaDB to a vendor-supported version with current security patches."; }
 
 
 #===============================================================================

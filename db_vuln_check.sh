@@ -677,8 +677,20 @@ check_d08() {
     local check_id="D-08"
     local check_name="안전한 암호화 알고리즘 사용"
     local risk_level="HIGH"
-    local weak_plugins plugins
-    plugins=$(execute_query "SELECT DISTINCT plugin FROM mysql.user" 2>/dev/null)
+    local weak_plugins plugins=""
+
+    # MariaDB 10.4+: 인증 정보가 mysql.global_priv(JSON)에 저장됨
+    local version_str
+    version_str=$(execute_query "SELECT VERSION()" 2>/dev/null)
+    if echo "$version_str" | grep -qi 'mariadb'; then
+        plugins=$(execute_query \
+            "SELECT DISTINCT JSON_UNQUOTE(JSON_EXTRACT(Priv, '$.plugin')) \
+             FROM mysql.global_priv \
+             WHERE JSON_EXTRACT(Priv, '$.plugin') IS NOT NULL" 2>/dev/null)
+    fi
+    # MySQL 또는 MariaDB 10.3- fallback
+    [ -z "$plugins" ] && plugins=$(execute_query "SELECT DISTINCT plugin FROM mysql.user" 2>/dev/null)
+
     weak_plugins=$(echo "$plugins" | grep -Ei 'mysql_old_password|old_password' || true)
     if [ -n "$weak_plugins" ]; then
         log_result "$check_id" "$check_name" "FAIL" "[Risk: ${risk_level}] Weak authentication plugin found: ${weak_plugins}"
