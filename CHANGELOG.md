@@ -8,6 +8,10 @@
 ## [Unreleased]
 
 ### Added
+- **Linux OS 점검/조치 지원 매트릭스 문서화**
+  - `docs/latest_mapping_guide.md`에 `U-01~U-67` 기준 점검 구현, 자동 조치, 부분 자동/수동 확인, 수동 조치, N/A 처리 기준 정리
+  - 점검만 있는 항목, 조치 가능한 항목, 수동 조치 항목, N/A 처리 항목 요약 추가
+
 - **버전 관리 규칙 재정의**
   - 신규 릴리스 버전 형식을 `YY.메이저.마이너`로 정리
   - 신규 태그는 `v` 접두어 없이 버전 문자열과 동일하게 사용하도록 문서와 릴리즈 워크플로우 정리
@@ -16,6 +20,19 @@
   - OS 점검/조치 스크립트에 systemctl, systemd runtime, authselect, faillock 설정 파일, PAM 인증 파일, firewall backend, package manager, time sync, crypto policies, SELinux, network tool 감지 프로파일 추가
   - OS 점검/조치 결과 파일 헤더에 감지된 capability profile 기록 추가
   - 향후 Rocky Linux 8.10/9.x 공통 점검 기준 분기를 위한 기반 정보 제공
+
+### Changed
+- **Linux 주요 OS 점검 항목 보강**
+  - `linux_vuln_check.sh`의 U-02, U-03, U-12, U-37, U-58, U-60, U-63, U-64를 최신 점검 기준에 맞춘 직접 점검 로직으로 보강
+  - pwquality, faillock/PAM, TMOUT, cron 권한, SNMP, sudoers, 보안 업데이트 점검의 판정 근거 상세화
+
+- **Linux OS 조치 스크립트 최신 점검 기준 정렬**
+  - `linux_vuln_fix.sh`의 U-02, U-03, U-12, U-37, U-58, U-60, U-63, U-64 조치 경로를 최신 점검 기준과 매칭
+  - `--dry-run`에서 실제 조치 기준과 동일한 계획, 백업 대상, 수동 검토 필요 사유를 출력하도록 보강
+  - sudoers, cron, pwquality, faillock, TMOUT 관련 백업/조치 경로를 명시적으로 정리
+
+### Security
+- Linux OS 주요 보안 항목의 점검-조치 불일치 가능성을 줄이고, 자동 조치가 위험한 SNMP community, sudo NOPASSWD 정책, 보안 패치 적용 항목은 수동 검토로 분리
 
 ## [v26.05.01] - 2026-05-14
 

@@ -291,7 +291,7 @@ backup_file() {
         return
     fi
     if [ -f "$file" ]; then
-        cp -p "$file" "$BACKUP_DIR/$(basename $file).bak"
+        cp -p "$file" "$BACKUP_DIR/$(basename "$file").bak"
         [ "$QUIET" = true ] || echo -e "${BLUE}[BACKUP] $file${NC}"
     fi
 }
@@ -1791,12 +1791,19 @@ latest_detail_for() {
     grep -A 2 "^\[${id}\]" "$CHECK_RESULT_FILE" | grep -m1 '^Detail:' | sed 's/^Detail: //'
 }
 
+latest_legacy_result_mode() {
+    [ -n "$CHECK_RESULT_FILE" ] && [ -f "$CHECK_RESULT_FILE" ] || return 1
+    grep -Eq '^\[U-(68|69|70|71|72|73|74)\]' "$CHECK_RESULT_FILE"
+}
+
 latest_is_failed() {
     local id="$1"
     local fallback_id="$2"
     local status
     status=$(latest_status_for "$id")
-    [ -z "$status" ] && [ -n "$fallback_id" ] && status=$(latest_status_for "$fallback_id")
+    if [ -z "$status" ] && [ -n "$fallback_id" ] && latest_legacy_result_mode; then
+        status=$(latest_status_for "$fallback_id")
+    fi
     [ "$status" = "FAIL" ]
 }
 
@@ -1811,7 +1818,7 @@ latest_run_legacy_fix() {
     tmp_fix=$(mktemp)
     status=$(latest_status_for "$new_id")
     detail=$(latest_detail_for "$new_id")
-    if [ -z "$status" ]; then
+    if [ -z "$status" ] && latest_legacy_result_mode; then
         status=$(latest_status_for "$legacy_id")
         detail=$(latest_detail_for "$legacy_id")
     fi
@@ -1862,9 +1869,236 @@ latest_manual_fix() {
     log_fix_result "$id" "$name" "FAILED" "Manual intervention required. ${message}"
 }
 
+
+latest_fix_u02() {
+    local check_id="U-02"
+    local check_name="비밀번호 관리정책 설정"
+
+    if ! latest_is_failed "$check_id" "U-02"; then
+        log_fix_result "$check_id" "$check_name" "SKIPPED" "Already passed or N/A"
+        return
+    fi
+    if [ "$DRY_RUN" = true ]; then
+        log_fix_result "$check_id" "$check_name" "PLANNED" "Dry-run: would set pwquality minlen=9 and require digit/upper/lower/special classes, plus PASS_MAX_DAYS=90 and PASS_MIN_DAYS=1. Backups: /etc/security/pwquality.conf, /etc/login.defs."
+        return
+    fi
+
+    local pwquality_conf="/etc/security/pwquality.conf"
+    local login_defs="/etc/login.defs"
+    [ -d /etc/security ] || { log_fix_result "$check_id" "$check_name" "FAILED" "/etc/security directory not found"; return; }
+    [ -f "$login_defs" ] || { log_fix_result "$check_id" "$check_name" "FAILED" "$login_defs not found"; return; }
+
+    [ -f "$pwquality_conf" ] && backup_file "$pwquality_conf"
+    backup_file "$login_defs"
+    [ -f "$pwquality_conf" ] || touch "$pwquality_conf"
+
+    for key in minlen dcredit ucredit lcredit ocredit; do
+        sed -i "/^[[:space:]]*${key}[[:space:]]*=/d" "$pwquality_conf"
+    done
+    cat >> "$pwquality_conf" << 'EOF'
+
+# Managed by linux_vuln_fix.sh for U-02
+minlen = 9
+dcredit = -1
+ucredit = -1
+lcredit = -1
+ocredit = -1
+EOF
+
+    if grep -Eq '^[[:space:]]*PASS_MAX_DAYS[[:space:]]+' "$login_defs"; then
+        sed -i -E 's/^[[:space:]]*PASS_MAX_DAYS[[:space:]]+.*/PASS_MAX_DAYS 90/' "$login_defs"
+    else
+        echo "PASS_MAX_DAYS 90" >> "$login_defs"
+    fi
+    if grep -Eq '^[[:space:]]*PASS_MIN_DAYS[[:space:]]+' "$login_defs"; then
+        sed -i -E 's/^[[:space:]]*PASS_MIN_DAYS[[:space:]]+.*/PASS_MIN_DAYS 1/' "$login_defs"
+    else
+        echo "PASS_MIN_DAYS 1" >> "$login_defs"
+    fi
+
+    log_fix_result "$check_id" "$check_name" "SUCCESS" "Configured pwquality policy and login.defs password age policy to match U-02 check criteria"
+}
+
+latest_fix_u03() {
+    local check_id="U-03"
+    local check_name="계정 잠금 임계값 설정"
+
+    if ! latest_is_failed "$check_id" "U-03"; then
+        log_fix_result "$check_id" "$check_name" "SKIPPED" "Already passed or N/A"
+        return
+    fi
+    if [ "$DRY_RUN" = true ]; then
+        log_fix_result "$check_id" "$check_name" "PLANNED" "Dry-run: would configure /etc/security/faillock.conf with deny=5, unlock_time=600, remove even_deny_root, and enable authselect with-faillock when available. Backup: /etc/security/faillock.conf."
+        return
+    fi
+
+    local faillock_conf="/etc/security/faillock.conf"
+    [ -d /etc/security ] || { log_fix_result "$check_id" "$check_name" "FAILED" "/etc/security directory not found"; return; }
+    [ -f "$faillock_conf" ] && backup_file "$faillock_conf"
+    [ -f "$faillock_conf" ] || touch "$faillock_conf"
+
+    sed -i '/^[[:space:]]*deny[[:space:]]*=/d' "$faillock_conf"
+    sed -i '/^[[:space:]]*unlock_time[[:space:]]*=/d' "$faillock_conf"
+    sed -i '/^[[:space:]]*even_deny_root/d' "$faillock_conf"
+    cat >> "$faillock_conf" << 'EOF'
+
+# Managed by linux_vuln_fix.sh for U-03
+deny = 5
+unlock_time = 600
+EOF
+
+    if command -v authselect >/dev/null 2>&1 && authselect current >/dev/null 2>&1; then
+        if ! authselect current 2>/dev/null | grep -q 'with-faillock'; then
+            authselect enable-feature with-faillock >/dev/null 2>&1 && authselect apply-changes >/dev/null 2>&1
+        fi
+    fi
+
+    if grep -Rqs 'pam_faillock\.so' /etc/pam.d/system-auth /etc/pam.d/password-auth 2>/dev/null || { command -v authselect >/dev/null 2>&1 && authselect current 2>/dev/null | grep -q 'with-faillock'; }; then
+        log_fix_result "$check_id" "$check_name" "SUCCESS" "Configured faillock policy and verified PAM/authselect faillock binding"
+    else
+        log_fix_result "$check_id" "$check_name" "MANUAL" "faillock.conf configured, but pam_faillock/authselect with-faillock binding requires manual verification"
+    fi
+}
+
+latest_fix_u12() {
+    local check_id="U-12"
+    local check_name="세션 종료 시간 설정"
+    local tmout_file="/etc/profile.d/security_tmout.sh"
+
+    if ! latest_is_failed "$check_id" "U-54"; then
+        log_fix_result "$check_id" "$check_name" "SKIPPED" "Already passed or N/A"
+        return
+    fi
+    if [ "$DRY_RUN" = true ]; then
+        log_fix_result "$check_id" "$check_name" "PLANNED" "Dry-run: would create/update $tmout_file with TMOUT=900, readonly TMOUT, and export TMOUT. Backup if file exists."
+        return
+    fi
+
+    [ -d /etc/profile.d ] || { log_fix_result "$check_id" "$check_name" "FAILED" "/etc/profile.d not found"; return; }
+    [ -f "$tmout_file" ] && backup_file "$tmout_file"
+    cat > "$tmout_file" << 'EOF'
+# Managed by linux_vuln_fix.sh for U-12
+TMOUT=900
+readonly TMOUT
+export TMOUT
+EOF
+    chown root:root "$tmout_file" 2>/dev/null
+    chmod 644 "$tmout_file"
+    log_fix_result "$check_id" "$check_name" "SUCCESS" "Configured shell session timeout in $tmout_file"
+}
+
+latest_fix_u37() {
+    local check_id="U-37"
+    local check_name="crontab 설정파일 권한 설정 미흡"
+
+    if ! latest_is_failed "$check_id" "U-22"; then
+        log_fix_result "$check_id" "$check_name" "SKIPPED" "Already passed or N/A"
+        return
+    fi
+    if [ "$DRY_RUN" = true ]; then
+        log_fix_result "$check_id" "$check_name" "PLANNED" "Dry-run: would back up cron files where possible, set cron configuration ownership to root:root, set modes <=640, and remove world-write from /usr/bin/crontab."
+        return
+    fi
+
+    local file count=0
+    for file in /etc/crontab /etc/cron.allow /etc/cron.deny /etc/cron.d/* /var/spool/cron/*; do
+        [ -e "$file" ] || continue
+        [ -f "$file" ] && backup_file "$file"
+        chown root:root "$file" 2>/dev/null
+        chmod 640 "$file" 2>/dev/null
+        count=$((count + 1))
+    done
+    if [ -e /usr/bin/crontab ]; then
+        chown root:root /usr/bin/crontab 2>/dev/null
+        chmod o-w /usr/bin/crontab 2>/dev/null
+        count=$((count + 1))
+    fi
+
+    if [ "$count" -gt 0 ]; then
+        log_fix_result "$check_id" "$check_name" "SUCCESS" "Adjusted owner/permission on ${count} cron-related paths"
+    else
+        log_fix_result "$check_id" "$check_name" "SKIPPED" "No cron-related paths found"
+    fi
+}
+
+latest_fix_u58() {
+    local check_id="U-58"
+    local check_name="불필요한 SNMP 서비스 구동 점검"
+
+    if ! latest_is_failed "$check_id" "U-66"; then
+        log_fix_result "$check_id" "$check_name" "SKIPPED" "Already passed or N/A"
+        return
+    fi
+    if [ "$DRY_RUN" = true ]; then
+        log_fix_result "$check_id" "$check_name" "PLANNED" "Dry-run: would stop and disable snmpd service when systemctl is available."
+        return
+    fi
+
+    if command -v systemctl >/dev/null 2>&1; then
+        systemctl stop snmpd 2>/dev/null || true
+        systemctl disable snmpd 2>/dev/null || true
+    fi
+
+    if { command -v systemctl >/dev/null 2>&1 && systemctl is-active --quiet snmpd 2>/dev/null; } || pgrep -x snmpd >/dev/null 2>&1; then
+        log_fix_result "$check_id" "$check_name" "FAILED" "SNMP service is still running after stop/disable attempt"
+    else
+        log_fix_result "$check_id" "$check_name" "SUCCESS" "SNMP service stopped/disabled or not active"
+    fi
+}
+
+latest_fix_u60() {
+    latest_manual_fix "U-60" "SNMP Community String 복잡성 설정" "U-67" "Replace default/weak SNMP community strings with site-approved non-default values of length >= 10, or migrate to SNMPv3. Backup /etc/snmp/snmpd.conf before editing."
+}
+
+latest_fix_u63() {
+    local check_id="U-63"
+    local check_name="sudo 명령어 접근 관리"
+
+    if ! latest_is_failed "$check_id" ""; then
+        log_fix_result "$check_id" "$check_name" "SKIPPED" "Already passed or N/A"
+        return
+    fi
+    if [ "$DRY_RUN" = true ]; then
+        log_fix_result "$check_id" "$check_name" "PLANNED" "Dry-run: would back up sudoers files, set sudoers ownership to root:root, enforce mode 440 on sudoers files, and flag NOPASSWD rules for manual review."
+        return
+    fi
+
+    [ -f /etc/sudoers ] || { log_fix_result "$check_id" "$check_name" "FAILED" "/etc/sudoers not found"; return; }
+    local files=(/etc/sudoers) file nopasswd=false
+    if [ -d /etc/sudoers.d ]; then
+        chown root:root /etc/sudoers.d 2>/dev/null
+        chmod go-w /etc/sudoers.d 2>/dev/null
+        while IFS= read -r file; do files+=("$file"); done < <(find /etc/sudoers.d -maxdepth 1 -type f ! -name '*~' ! -name '*.bak' 2>/dev/null | sort)
+    fi
+
+    for file in "${files[@]}"; do
+        [ -f "$file" ] || continue
+        backup_file "$file"
+        chown root:root "$file" 2>/dev/null
+        chmod 440 "$file" 2>/dev/null
+        if awk '
+            /^[[:space:]]*($|#)/ { next }
+            /NOPASSWD[[:space:]]*:/ { found=1 }
+            END { exit found ? 0 : 1 }
+        ' "$file" 2>/dev/null; then
+            nopasswd=true
+        fi
+    done
+
+    if [ "$nopasswd" = true ]; then
+        log_fix_result "$check_id" "$check_name" "MANUAL" "sudoers owner/mode remediated; NOPASSWD sudo rules require policy review and manual removal"
+    else
+        log_fix_result "$check_id" "$check_name" "SUCCESS" "sudoers files protected with root ownership and restrictive permissions"
+    fi
+}
+
+latest_fix_u64() {
+    latest_manual_fix "U-64" "주기적 보안 패치 및 벤더 권고사항 적용" "U-42" "Review vendor advisories and apply security updates through a controlled change window, for example dnf update --security on Rocky/RHEL systems."
+}
+
 latest_fix_u01() { latest_run_legacy_fix "U-01" "root 계정 원격 접속 제한" "U-01" fix_u01; }
-latest_fix_u02() { latest_run_legacy_fix "U-02" "비밀번호 관리정책 설정" "U-02" fix_u02; }
-latest_fix_u03() { latest_run_legacy_fix "U-03" "계정 잠금 임계값 설정" "U-03" fix_u03; }
+# latest_fix_u02 is implemented directly above.
+# latest_fix_u03 is implemented directly above.
 latest_fix_u04() { latest_run_legacy_fix "U-04" "비밀번호 파일 보호" "U-04" fix_u04; }
 latest_fix_u05() { latest_run_legacy_fix "U-05" "root 이외의 UID가 ‘0’ 금지" "U-44" fix_u44; }
 latest_fix_u06() { latest_run_legacy_fix "U-06" "사용자 계정 su 기능 제한" "U-45" fix_u45; }
@@ -1873,7 +2107,7 @@ latest_fix_u08() { latest_run_legacy_fix "U-08" "관리자 그룹에 최소한�
 latest_fix_u09() { latest_run_legacy_fix "U-09" "계정이 존재하지 않는 GID 금지" "U-51" fix_u51; }
 latest_fix_u10() { latest_run_legacy_fix "U-10" "동일한 UID 금지" "U-52" fix_u52; }
 latest_fix_u11() { latest_run_legacy_fix "U-11" "사용자 Shell 점검" "U-53" fix_u53; }
-latest_fix_u12() { latest_run_legacy_fix "U-12" "세션 종료 시간 설정" "U-54" fix_u54; }
+# latest_fix_u12 is implemented directly above.
 latest_fix_u13() { latest_manual_fix "U-13" "안전한 비밀번호 암호화 알고리즘 사용" "" "Configure SHA-256/SHA-512/yescrypt password hashing policy and rotate weak hashes."; }
 latest_fix_u14() { latest_run_legacy_fix "U-14" "root 홈, 패스 디렉터리 권한 및 패스 설정" "U-05" fix_u05; }
 latest_fix_u15() { latest_run_legacy_fix "U-15" "파일 및 디렉터리 소유자 설정" "U-06" fix_u06; }
@@ -1898,7 +2132,7 @@ latest_fix_u33() { latest_run_legacy_fix "U-33" "숨겨진 파일 및 디렉토�
 latest_fix_u34() { latest_run_legacy_fix "U-34" "Finger 서비스 비활성화" "U-19" fix_u19; }
 latest_fix_u35() { latest_run_legacy_fix "U-35" "공유 서비스에 대한 익명 접근 제한 설정" "U-20" fix_u20; }
 latest_fix_u36() { latest_run_legacy_fix "U-36" "r 계열 서비스 비활성화" "U-21" fix_u21; }
-latest_fix_u37() { latest_run_legacy_fix "U-37" "crontab 설정파일 권한 설정 미흡" "U-22" fix_u22; }
+# latest_fix_u37 is implemented directly above.
 latest_fix_u38() { latest_run_legacy_fix "U-38" "DoS 공격에 취약한 서비스 비활성화" "U-23" fix_u23; }
 latest_fix_u39() { latest_run_legacy_fix "U-39" "불필요한 NFS 서비스 비활성화" "U-24" fix_u24; }
 latest_fix_u40() { latest_run_legacy_fix "U-40" "NFS 접근 통제" "U-25" fix_u25; }
@@ -1919,13 +2153,13 @@ latest_fix_u54() { latest_run_legacy_fix "U-54" "암호화되지 않는 FTP 서�
 latest_fix_u55() { latest_run_legacy_fix "U-55" "FTP 계정 Shell 제한" "U-62" fix_u62; }
 latest_fix_u56() { latest_manual_fix "U-56" "FTP 서비스 접근 제어 설정" "" "Restrict FTP access by approved users, groups, and source addresses."; }
 latest_fix_u57() { latest_run_legacy_fix "U-57" "Ftpusers 파일 설정" "U-64" fix_u64; }
-latest_fix_u58() { latest_run_legacy_fix "U-58" "불필요한 SNMP 서비스 구동 점검" "U-66" fix_u66; }
+# latest_fix_u58 is implemented directly above.
 latest_fix_u59() { latest_manual_fix "U-59" "안전한 SNMP 버전 사용" "" "Migrate SNMP to v3 and remove v1/v2 community settings."; }
-latest_fix_u60() { latest_run_legacy_fix "U-60" "SNMP Community String 복잡성 설정" "U-67" fix_u67; }
+# latest_fix_u60 is implemented directly above.
 latest_fix_u61() { latest_manual_fix "U-61" "SNMP Access Control 설정" "" "Restrict SNMP users/communities to approved managers and views."; }
 latest_fix_u62() { latest_run_legacy_fix "U-62" "로그인 시 경고 메시지 설정" "U-68" fix_u68; }
-latest_fix_u63() { latest_manual_fix "U-63" "sudo 명령어 접근 관리" "" "Review sudoers policy, restrict sudo to approved groups/users, and protect sudoers permissions."; }
-latest_fix_u64() { latest_run_legacy_fix "U-64" "주기적 보안 패치 및 벤더 권고사항 적용" "U-42" fix_u42; }
+# latest_fix_u63 is implemented directly above.
+# latest_fix_u64 is implemented directly above.
 latest_fix_u65() { latest_manual_fix "U-65" "NTP 및 시각 동기화 설정" "" "Enable chronyd/ntpd or systemd-timesyncd with approved time sources."; }
 latest_fix_u66() { latest_run_legacy_fix "U-66" "정책에 따른 시스템 로깅 설정" "U-72" fix_u72; }
 latest_fix_u67() { latest_manual_fix "U-67" "로그 디렉터리 소유자 및 권한 설정" "" "Set log directories to root-owned, remove world-write permissions, and preserve application-specific ownership exceptions."; }
