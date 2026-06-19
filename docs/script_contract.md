@@ -325,11 +325,5 @@ Detail: 상세 내용
 
 ## 6. Baseline Fixtures
 
-현재 결과 파일 형식 fixture는 다음 경로에 둔다.
-
-- `tests/fixtures/results/linux_check.fixture`
-- `tests/fixtures/results/linux_fix.fixture`
-- `tests/fixtures/results/db_check.fixture`
-- `tests/fixtures/results/db_fix.fixture`
-
-이 fixture들은 향후 리팩터링 시 결과 파서 호환성 테스트의 입력으로 사용한다.
+결과 파일 포맷 검증이 필요한 경우 실제 스크립트를 실행하여 결과 파일을 생성한 후 확인한다.
+`tests/fixtures/` 디렉토리는 제거됨 — 실제 테스트 러너 없이 샘플 파일만 존재했으므로 삭제.
