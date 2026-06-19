@@ -1,8 +1,52 @@
 # Spec: linux-vuln-autofix 개선 및 최신화 (2026)
 
 작성일: 2026-06-19  
+최종 업데이트: 2026-06-19  
 기준 버전: v26.05.01  
 목표: Rocky Linux 8.10 / 9.x + MySQL/MariaDB 대상의 단일 점검 스크립트 + 단일 자동조치 스크립트를 완성한다.
+
+---
+
+## 진행 현황 (2026-06-19 기준)
+
+### ✅ 완료
+
+| 항목 | 내용 | 커밋 |
+|---|---|---|
+| L1-T1 | U-03 `CAP_FAILLOCK_CONF` 분기, Rocky 8 pam.d fallback | feat: Linux 점검... |
+| L1-T2 | U-65 `CAP_TIME_SYNC` 기반 NTP 서비스 확인 | 동일 |
+| L1-T3 | Rocky 8.10 기준 `linux_check_rocky8.fixture` 생성 | 동일 |
+| L2-T1 | U-01 레거시 래퍼 → 직접 구현 (PermitRootLogin 파싱) | 동일 |
+| L2-T2 | U-04 레거시 래퍼 → 직접 구현 (passwd shadow 확인) | 동일 |
+| L2-T3 | U-14 root PATH/홈 직접 구현, check_u05 의미 불일치 해소 | 동일 |
+| L3-T1 | U-28 `ip_forward=0`, `tcp_syncookies=1`, firewall 점검 신규 추가 | 동일 |
+| L3-T2 | U-33 `.netrc` 스캔 + 소유자 없는 숨김 파일 직접 구현 | 동일 |
+
+### 🔲 진행 필요
+
+| 우선순위 | 항목 | 분류 | 내용 |
+|---|---|---|---|
+| HIGH | **Phase 1-A** | 헤더 | `linux_vuln_check.sh`, `linux_vuln_fix.sh` 헤더 주석 "RHEL/Rocky Linux 9" → "Rocky Linux 8.10/9.x" |
+| HIGH | **Phase 1-B** | 문서 | `CHANGELOG.md` `yourusername` placeholder URL 교체 |
+| HIGH | **GAP-L1 잔여** | OS 분기 | U-02 `CAP_AUTHSELECT` 없는 Rocky 8 환경 pwquality 로드 확인 |
+| HIGH | **GAP-L1 잔여** | OS 분기 | U-13 `CAP_CRYPTO_POLICIES` 기반 hash algorithm 분기 |
+| MEDIUM | **GAP-L2 잔여** | 레거시 전환 | U-23 SUID/SGID Rocky 8/9 기본 목록 차이 반영 |
+| MEDIUM | **GAP-L2 잔여** | 레거시 전환 | U-30 UMASK login.defs/profile.d 직접 점검 |
+| MEDIUM | **GAP-L2 잔여** | 레거시 전환 | U-62 /etc/motd, /etc/issue 경고 메시지 직접 점검 |
+| MEDIUM | **GAP-D1** | DB | KISA 최신 가이드 D-05, D-09, D-12~D-24 범위 확인 및 구현/N/A 결정 |
+| MEDIUM | **GAP-D2** | DB | MariaDB 10.x/11.x 암호화 플러그인 분기 (D-08) |
+| MEDIUM | **GAP-D3** | DB | `db_vuln_fix.sh` MX-* fallback 코드 제거 |
+| MEDIUM | **Phase 6** | CI | `.github/workflows/lint.yml` shellcheck + `bash -n` 추가 |
+| LOW | **Phase 5** | 문서 | `linux_manual_fix_guide.md` U-01~U-67 기준 목차 갱신 |
+| LOW | **Phase 5** | 문서 | `mysql_manual_fix_guide.md` D-* 체계 전면 갱신 |
+| LOW | **Phase 1-C** | 문서 | `README.md` 지원 OS "Rocky Linux 8.10 및 9.x" 명시 |
+
+### 레거시 매핑 잔존 현황
+
+최초 50개 → 현재 **44개** (6개 직접 전환 완료)  
+잔여 44개 중 의미 검증 필요 우선 항목: U-23, U-24, U-30, U-62
+
+---
 
 ---
 
