@@ -2902,11 +2902,36 @@ latest_check_u03() {
     local check_id="U-03"
     local check_name="계정 잠금 임계값 설정"
     local risk_level="HIGH"
-    local faillock_conf="/etc/security/faillock.conf"
     local fail_reasons="" pass_details=""
 
-    if [ ! -f "$faillock_conf" ]; then
-        log_result "$check_id" "$check_name" "FAIL" "[Risk: ${risk_level}] ${faillock_conf} file does not exist"
+    # CAP_FAILLOCK_CONF 기반 분기: Rocky 8에서 faillock.conf 없을 때 pam.d 직접 확인
+    local faillock_conf="$CAP_FAILLOCK_CONF"
+    if [ "$faillock_conf" = "none" ] || [ ! -f "$faillock_conf" ]; then
+        local pam_deny pam_unlock
+        pam_deny=$(grep -rh 'pam_faillock\.so' /etc/pam.d/ 2>/dev/null \
+            | grep -v '^[[:space:]]*#' \
+            | grep -oP 'deny=\K[0-9]+' | sort -n | tail -1)
+        pam_unlock=$(grep -rh 'pam_faillock\.so' /etc/pam.d/ 2>/dev/null \
+            | grep -v '^[[:space:]]*#' \
+            | grep -oP 'unlock_time=\K[0-9]+' | sort -n | tail -1)
+        if [ -z "$pam_deny" ]; then
+            log_result "$check_id" "$check_name" "FAIL" \
+                "[Risk: ${risk_level}] faillock not configured in faillock.conf or pam.d"
+            return
+        fi
+        if [[ "$pam_deny" =~ ^[0-9]+$ ]] && [ "$pam_deny" -gt 0 ] && [ "$pam_deny" -le 5 ]; then
+            pass_details="deny=${pam_deny} (pam.d), "
+        else
+            fail_reasons="deny should be 1-5 (${pam_deny}, pam.d); "
+        fi
+        [[ "$pam_unlock" =~ ^[0-9]+$ ]] && [ "$pam_unlock" -gt 0 ] \
+            && pass_details="${pass_details}unlock_time=${pam_unlock} (pam.d)" \
+            || fail_reasons="${fail_reasons}unlock_time not set or invalid (pam.d); "
+        if [ -z "$fail_reasons" ]; then
+            log_result "$check_id" "$check_name" "PASS" "[Risk: ${risk_level}] ${pass_details}"
+        else
+            log_result "$check_id" "$check_name" "FAIL" "[Risk: ${risk_level}] ${fail_reasons}"
+        fi
         return
     fi
 
@@ -3247,13 +3272,31 @@ latest_check_u65() {
     local check_id="U-65"
     local check_name="NTP 및 시각 동기화 설정"
     local risk_level="MEDIUM"
+    local synced=false active_svc=""
 
-    if systemctl is-active --quiet chronyd 2>/dev/null || systemctl is-active --quiet ntpd 2>/dev/null; then
-        log_result "$check_id" "$check_name" "PASS" "[Risk: ${risk_level}] Time synchronization service is active"
-    elif timedatectl show -p NTPSynchronized --value 2>/dev/null | grep -qi '^yes$'; then
-        log_result "$check_id" "$check_name" "PASS" "[Risk: ${risk_level}] System reports NTP synchronized"
+    # CAP_TIME_SYNC 기반: 감지된 서비스 목록 순으로 active 확인
+    if [ "$CAP_TIME_SYNC" != "none" ] && [ -n "$CAP_TIME_SYNC" ]; then
+        IFS=',' read -ra sync_services <<< "$CAP_TIME_SYNC"
+        for svc in "${sync_services[@]}"; do
+            [ -z "$svc" ] && continue
+            if systemctl is-active --quiet "$svc" 2>/dev/null; then
+                synced=true; active_svc="$svc"; break
+            fi
+        done
+    fi
+
+    # fallback: timedatectl NTP 상태 직접 확인
+    if [ "$synced" = false ] && \
+       timedatectl show -p NTPSynchronized --value 2>/dev/null | grep -qi '^yes$'; then
+        synced=true; active_svc="timedatectl(NTP synchronized)"
+    fi
+
+    if [ "$synced" = true ]; then
+        log_result "$check_id" "$check_name" "PASS" \
+            "[Risk: ${risk_level}] Time synchronization is active (${active_svc})"
     else
-        log_result "$check_id" "$check_name" "FAIL" "[Risk: ${risk_level}] NTP/time synchronization is not active or not verified"
+        log_result "$check_id" "$check_name" "FAIL" \
+            "[Risk: ${risk_level}] NTP/time synchronization is not active or not verified (CAP_TIME_SYNC=${CAP_TIME_SYNC})"
     fi
 }
 
@@ -3278,10 +3321,57 @@ latest_check_u67() {
     fi
 }
 
-latest_check_u01() { latest_run_legacy_check "U-01" "root 계정 원격 접속 제한" check_u01; }
+latest_check_u01() {
+    local check_id="U-01"
+    local check_name="root 계정 원격 접속 제한"
+    local risk_level="HIGH"
+    local sshd_config="/etc/ssh/sshd_config"
+
+    [ -f "$sshd_config" ] || {
+        log_result "$check_id" "$check_name" "N/A" \
+            "[Risk: ${risk_level}] sshd_config file does not exist"
+        return
+    }
+
+    local permit_root
+    permit_root=$(grep -i '^[[:space:]]*PermitRootLogin' "$sshd_config" \
+        | grep -v '^[[:space:]]*#' | tail -1 | awk '{print tolower($2)}')
+
+    if [ -z "$permit_root" ]; then
+        log_result "$check_id" "$check_name" "FAIL" \
+            "[Risk: ${risk_level}] PermitRootLogin is not set or commented out"
+    elif [ "$permit_root" = "no" ]; then
+        log_result "$check_id" "$check_name" "PASS" \
+            "[Risk: ${risk_level}] PermitRootLogin is set to no"
+    else
+        log_result "$check_id" "$check_name" "FAIL" \
+            "[Risk: ${risk_level}] PermitRootLogin is set to ${permit_root} (should be no)"
+    fi
+}
 # latest_check_u02 is implemented directly above.
 # latest_check_u03 is implemented directly above.
-latest_check_u04() { latest_run_legacy_check "U-04" "비밀번호 파일 보호" check_u04; }
+latest_check_u04() {
+    local check_id="U-04"
+    local check_name="비밀번호 파일 보호"
+    local risk_level="HIGH"
+
+    [ -f /etc/passwd ] || {
+        log_result "$check_id" "$check_name" "FAIL" \
+            "[Risk: ${risk_level}] /etc/passwd does not exist"
+        return
+    }
+
+    local unshadowed
+    unshadowed=$(awk -F: '$2 != "x" {print $1}' /etc/passwd)
+
+    if [ -z "$unshadowed" ]; then
+        log_result "$check_id" "$check_name" "PASS" \
+            "[Risk: ${risk_level}] All passwords are shadowed (/etc/passwd field 2 = x)"
+    else
+        log_result "$check_id" "$check_name" "FAIL" \
+            "[Risk: ${risk_level}] Accounts with unshadowed passwords: ${unshadowed}"
+    fi
+}
 latest_check_u05() { latest_run_legacy_check "U-05" "root 이외의 UID가 ‘0’ 금지" check_u44; }
 latest_check_u06() { latest_run_legacy_check "U-06" "사용자 계정 su 기능 제한" check_u45; }
 latest_check_u07() { latest_run_legacy_check "U-07" "불필요한 계정 제거" check_u49; }
@@ -3290,7 +3380,47 @@ latest_check_u09() { latest_run_legacy_check "U-09" "계정이 존재하지 않�
 latest_check_u10() { latest_run_legacy_check "U-10" "동일한 UID 금지" check_u52; }
 latest_check_u11() { latest_run_legacy_check "U-11" "사용자 Shell 점검" check_u53; }
 # latest_check_u12 is implemented directly above.
-latest_check_u14() { latest_run_legacy_check "U-14" "root 홈, 패스 디렉터리 권한 및 패스 설정" check_u05; }
+latest_check_u14() {
+    local check_id="U-14"
+    local check_name="root 홈, 패스 디렉터리 권한 및 패스 설정"
+    local risk_level="HIGH"
+    local issues=""
+
+    # root 홈 디렉토리 권한 확인
+    local root_home
+    root_home=$(getent passwd root | cut -d: -f6)
+    if [ -d "$root_home" ]; then
+        local home_mode
+        home_mode=$(stat -c '%a' "$root_home" 2>/dev/null)
+        [ $((8#$home_mode & 022)) -ne 0 ] && \
+            issues="${issues}root home ${root_home} is group/other writable (mode=${home_mode}); "
+    fi
+
+    # root PATH에 위험 경로(. 또는 빈 항목) 포함 여부
+    local raw_path=""
+    for f in /root/.bash_profile /root/.bashrc /root/.profile /etc/profile; do
+        [ -f "$f" ] || continue
+        raw_path=$(grep -h '^[[:space:]]*\(export \)\?PATH=' "$f" 2>/dev/null \
+            | grep -v '^[[:space:]]*#' | tail -1 | sed 's/.*PATH=//' | tr -d '"'"'")
+        [ -n "$raw_path" ] && break
+    done
+    if [ -n "$raw_path" ]; then
+        IFS=':' read -ra path_entries <<< "$raw_path"
+        for entry in "${path_entries[@]}"; do
+            if [ "$entry" = "." ] || [ -z "$entry" ]; then
+                issues="${issues}root PATH contains unsafe entry '${entry:-empty}'; "
+            fi
+        done
+    fi
+
+    if [ -z "$issues" ]; then
+        log_result "$check_id" "$check_name" "PASS" \
+            "[Risk: ${risk_level}] root home permissions and PATH entries are safe"
+    else
+        log_result "$check_id" "$check_name" "FAIL" \
+            "[Risk: ${risk_level}] ${issues}"
+    fi
+}
 latest_check_u15() { latest_run_legacy_check "U-15" "파일 및 디렉터리 소유자 설정" check_u06; }
 latest_check_u16() { latest_run_legacy_check "U-16" "/etc/passwd 파일 소유자 및 권한 설정" check_u07; }
 latest_check_u18() { latest_run_legacy_check "U-18" "/etc/shadow 파일 소유자 및 권한 설정" check_u08; }
@@ -3303,12 +3433,75 @@ latest_check_u24() { latest_run_legacy_check "U-24" "사용자, 시스템 환경
 latest_check_u25() { latest_run_legacy_check "U-25" "world writable 파일 점검" check_u15; }
 latest_check_u26() { latest_run_legacy_check "U-26" "/dev에 존재하지 않는 device 파일 점검" check_u16; }
 latest_check_u27() { latest_run_legacy_check "U-27" "\$HOME/.rhosts, hosts.equiv 사용 금지" check_u17; }
-latest_check_u28() { latest_run_legacy_check "U-28" "접속 IP 및 포트 제한" check_u18; }
+latest_check_u28() {
+    local check_id="U-28"
+    local check_name="접속 IP 및 포트 제한"
+    local risk_level="MEDIUM"
+    local issues=""
+
+    # IP forwarding 비활성화 확인 (일반 서버 기준)
+    local ip_fwd
+    ip_fwd=$(sysctl -n net.ipv4.ip_forward 2>/dev/null)
+    [ "$ip_fwd" != "0" ] && \
+        issues="${issues}net.ipv4.ip_forward=${ip_fwd:-unknown} (should be 0; skip if this server acts as a router); "
+
+    # TCP SYN cookies 활성화 확인
+    local syn_cookies
+    syn_cookies=$(sysctl -n net.ipv4.tcp_syncookies 2>/dev/null)
+    [ "$syn_cookies" != "1" ] && \
+        issues="${issues}net.ipv4.tcp_syncookies=${syn_cookies:-unknown} (should be 1); "
+
+    # 방화벽 활성화 확인
+    local firewall_active=false
+    case "$CAP_FIREWALL_BACKEND" in
+        firewalld)
+            systemctl is-active --quiet firewalld 2>/dev/null && firewall_active=true ;;
+        nftables)
+            systemctl is-active --quiet nftables 2>/dev/null && firewall_active=true ;;
+        iptables)
+            iptables -L INPUT 2>/dev/null | grep -q 'Chain INPUT' && firewall_active=true ;;
+    esac
+    [ "$firewall_active" = false ] && \
+        issues="${issues}No active firewall (${CAP_FIREWALL_BACKEND:-none}) detected; "
+
+    if [ -z "$issues" ]; then
+        log_result "$check_id" "$check_name" "PASS" \
+            "[Risk: ${risk_level}] IP forwarding disabled, SYN cookies enabled, firewall (${CAP_FIREWALL_BACKEND}) active"
+    else
+        log_result "$check_id" "$check_name" "FAIL" \
+            "[Risk: ${risk_level}] ${issues}"
+    fi
+}
 latest_check_u29() { latest_run_legacy_check "U-29" "hosts.lpd 파일 소유자 및 권한 설정" check_u55; }
 latest_check_u30() { latest_run_legacy_check "U-30" "UMASK 설정 관리" check_u56; }
 latest_check_u31() { latest_run_legacy_check "U-31" "홈디렉토리 소유자 및 권한 설정" check_u57; }
 latest_check_u32() { latest_run_legacy_check "U-32" "홈 디렉토리로 지정한 디렉토리의 존재 관리" check_u58; }
-latest_check_u33() { latest_run_legacy_check "U-33" "숨겨진 파일 및 디렉토리 검색 및 제거" check_u59; }
+latest_check_u33() {
+    local check_id="U-33"
+    local check_name="숨겨진 파일 및 디렉토리 검색 및 제거"
+    local risk_level="LOW"
+    local issues=""
+
+    # .netrc 파일 — 자동 FTP 로그인 허용 위험
+    local netrc_files
+    netrc_files=$(find /root /home -maxdepth 2 -name '.netrc' 2>/dev/null | head -10)
+    [ -n "$netrc_files" ] && \
+        issues="${issues}.netrc files found (auto-login risk): $(echo "$netrc_files" | tr '\n' ' '); "
+
+    # /tmp, /var/tmp 의 소유자 없는 숨김 파일
+    local no_owner
+    no_owner=$(find /tmp /var/tmp -maxdepth 2 -name '.*' -nouser 2>/dev/null | head -10)
+    [ -n "$no_owner" ] && \
+        issues="${issues}Hidden files with no valid owner in /tmp: $(echo "$no_owner" | tr '\n' ' '); "
+
+    if [ -z "$issues" ]; then
+        log_result "$check_id" "$check_name" "PASS" \
+            "[Risk: ${risk_level}] No .netrc files or ownerless hidden files found"
+    else
+        log_result "$check_id" "$check_name" "FAIL" \
+            "[Risk: ${risk_level}] ${issues}"
+    fi
+}
 latest_check_u34() { latest_run_legacy_check "U-34" "Finger 서비스 비활성화" check_u19; }
 latest_check_u35() { latest_run_legacy_check "U-35" "공유 서비스에 대한 익명 접근 제한 설정" check_u20; }
 latest_check_u36() { latest_run_legacy_check "U-36" "r 계열 서비스 비활성화" check_u21; }
