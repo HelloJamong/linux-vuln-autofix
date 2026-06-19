@@ -5,7 +5,7 @@
 형식은 [Keep a Changelog](https://keepachangelog.com/ko/1.0.0/)를 기반으로 하며,
 신규 릴리스 버전은 `YY.메이저.마이너` 형식을 따릅니다.
 
-## [Unreleased]
+## [26.06.00] - 2026-06-19
 
 ### Added
 - **Linux OS 점검/조치 지원 매트릭스 문서화**
@@ -30,6 +30,23 @@
   - `linux_vuln_fix.sh`의 U-02, U-03, U-12, U-37, U-58, U-60, U-63, U-64 조치 경로를 최신 점검 기준과 매칭
   - `--dry-run`에서 실제 조치 기준과 동일한 계획, 백업 대상, 수동 검토 필요 사유를 출력하도록 보강
   - sudoers, cron, pwquality, faillock, TMOUT 관련 백업/조치 경로를 명시적으로 정리
+
+- **`linux_vuln_check.sh` 코드 품질 전면 개선**
+  - SC2155 경고 125건 일괄 수정: `local var=$(cmd)` → `local var; var=$(cmd)` 분리
+  - 레거시 래퍼 함수 35개 직접 구현으로 전환, `latest_run_legacy_check` 호출 완전 제거
+  - SC2276 오류 수정: awk `$1!="root"` 패턴에 `# shellcheck disable=SC2276` 추가 (false positive)
+
+- **`db_vuln_fix.sh` 미사용 변수 제거**
+  - SC2034 경고 원인인 `SCRIPT_DIR` 미사용 변수 제거
+
+- **`docs/linux_manual_fix_guide.md` KISA 2026 기준 재매핑**
+  - 구 U-53~U-57 (계정 관리) 섹션을 신규 U-07~U-11로 재매핑
+  - 신규 KISA 2026 U-53 (FTP 서비스 정보 노출 제한), U-56 (FTP 서비스 접근 제어) 스텁 추가
+
+### Removed
+- **`tests/fixtures/results/` 불필요한 샘플 결과 파일 삭제**
+  - 실제 테스트 러너가 없는 상태에서 유지되던 5개 fixture 파일 제거
+  - `tests/` 디렉토리 git 트래킹 제거
 
 ### Security
 - Linux OS 주요 보안 항목의 점검-조치 불일치 가능성을 줄이고, 자동 조치가 위험한 SNMP community, sudo NOPASSWD 정책, 보안 패치 적용 항목은 수동 검토로 분리
@@ -230,7 +247,7 @@
 - 각 버전의 릴리스 날짜는 YYYY-MM-DD 형식으로 표시됩니다.
 - 최신 버전이 항상 파일 상단에 위치합니다.
 
-[Unreleased]: https://github.com/HelloJamong/linux-vuln-autofix/compare/v26.05.01...HEAD
+[26.06.00]: https://github.com/HelloJamong/linux-vuln-autofix/compare/v26.05.01...26.06.00
 [v26.05.01]: https://github.com/HelloJamong/linux-vuln-autofix/compare/v26.03.02...v26.05.01
 [v26.03.02]: https://github.com/HelloJamong/linux-vuln-autofix/compare/v26.03.01...v26.03.02
 [v26.03.01]: https://github.com/HelloJamong/linux-vuln-autofix/releases/tag/v26.03.01

@@ -4,11 +4,11 @@
 #
 # 설명: MySQL/MariaDB의 보안 취약점을 점검하고 결과를 파일로 저장합니다.
 # 출력: hostname_YYMMDD_hhmmss_mysql_result.txt 형식의 결과 파일
-# 버전: 26.05.01
+# 버전: 26.06.00
 #===============================================================================
 
 # 버전 정보
-VERSION="26.05.01"
+VERSION="26.06.00"
 SCRIPT_NAME="MySQL/MariaDB Vulnerability Check Script"
 
 # 색상 정의

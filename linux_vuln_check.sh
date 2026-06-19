@@ -4,11 +4,11 @@
 #
 # 설명: 시스템의 보안 취약점을 점검하고 결과를 파일로 저장합니다.
 # 출력: hostname_YYMMDD_hhmmss_result.txt 형식의 결과 파일
-# 버전: 26.05.01
+# 버전: 26.06.00
 #===============================================================================
 
 # 버전 정보
-VERSION="26.05.01"
+VERSION="26.06.00"
 SCRIPT_NAME="Linux Vulnerability Check Script"
 
 # 색상 정의
@@ -1940,6 +1940,7 @@ check_u44() {
 
     # UID가 0인 계정 확인 (root 제외)
     local uid_zero_accounts
+    # shellcheck disable=SC2276
     uid_zero_accounts=$(awk -F: '$3==0 && $1!="root" {print $1}' /etc/passwd)
 
     if [ -z "$uid_zero_accounts" ]; then
@@ -3531,6 +3532,7 @@ latest_check_u05() {
     local risk_level="HIGH"
 
     local uid_zero_accounts
+    # shellcheck disable=SC2276
     uid_zero_accounts=$(awk -F: ‘$3==0 && $1!="root" {print $1}’ /etc/passwd)
 
     if [ -z "$uid_zero_accounts" ]; then

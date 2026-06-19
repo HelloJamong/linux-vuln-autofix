@@ -5,11 +5,11 @@
 # 설명: 취약점 점검 결과를 바탕으로 자동으로 보안 조치를 수행합니다.
 # 사용법: sudo ./linux_vuln_fix.sh [check_result_file]
 # 출력: hostname_YYMMDD_hhmmss_fix_result.txt 형식의 조치 결과 파일
-# 버전: 26.05.01
+# 버전: 26.06.00
 #===============================================================================
 
 # 버전 정보
-VERSION="26.05.01"
+VERSION="26.06.00"
 SCRIPT_NAME="Linux Vulnerability Auto-Fix Script"
 
 # 색상 정의
