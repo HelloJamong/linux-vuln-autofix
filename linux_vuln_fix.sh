@@ -35,7 +35,7 @@ DRY_RUN=false
 OS_ID="unknown"
 OS_VERSION_ID="unknown"
 OS_PRETTY_NAME="unknown"
-OS_MAJOR_VERSION="unknown"
+OS_MAJOR_VERSION="26.06.00"
 CAP_SYSTEMCTL="false"
 CAP_SYSTEMD_RUNTIME="false"
 CAP_AUTHSELECT="false"
@@ -91,7 +91,7 @@ check_os_environment() {
     OS_ID="${ID:-unknown}"
     OS_VERSION_ID="${VERSION_ID:-unknown}"
     OS_PRETTY_NAME="${PRETTY_NAME:-${NAME:-unknown}}"
-    OS_MAJOR_VERSION="$major_version"
+    OS_MAJOR_VERSION="26.06.00"
     if [ "$major_version" = "8" ] && [ "$VERSION_ID" != "8.10" ]; then
         echo -e "${RED}[ERROR] Unsupported OS version: $VERSION_ID${NC}"
         echo -e "${RED}[ERROR] This script is designed for Rocky Linux 8.10 or 9.x.${NC}"
