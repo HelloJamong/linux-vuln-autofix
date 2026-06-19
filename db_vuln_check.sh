@@ -24,12 +24,17 @@ DATE=$(date +%y%m%d)
 TIME=$(date +%H%M%S)
 RESULT_FILE="${HOSTNAME}_${DATE}_${TIME}_mysql_result.txt"
 SCRIPT_DIR=$(dirname "$(readlink -f "$0")")
+QUIET=false
+NO_COLOR=false
 
 # MySQL 접속 정보 (환경 변수 또는 기본값)
 MYSQL_HOST="${MYSQL_HOST:-localhost}"
 MYSQL_PORT="${MYSQL_PORT:-3306}"
 MYSQL_USER="${MYSQL_USER:-root}"
 MYSQL_PASSWORD="${MYSQL_PASSWORD:-}"
+DB_PRODUCT="unknown"
+DB_VERSION=""
+DB_VERSION_COMMENT=""
 
 # MySQL 명령어 옵션
 MYSQL_CMD="mysql"
@@ -37,6 +42,7 @@ MYSQL_OPTS=""
 
 # 사용법 출력
 usage() {
+    local exit_code="${1:-0}"
     echo "Usage: $0 [OPTIONS]"
     echo ""
     echo "Options:"
@@ -44,6 +50,9 @@ usage() {
     echo "  -P, --port PORT       MySQL port (default: 3306)"
     echo "  -u, --user USER       MySQL user (default: root)"
     echo "  -p, --password PASS   MySQL password"
+    echo "  -o, --output FILE     Write assessment result to FILE"
+    echo "  -q, --quiet           Suppress progress output"
+    echo "  --no-color            Disable colored terminal output"
     echo "  -v, --version         Show version information"
     echo "  --help                Show this help message"
     echo ""
@@ -53,7 +62,7 @@ usage() {
     echo "Examples:"
     echo "  $0 -u root -p mypassword"
     echo "  MYSQL_PASSWORD=mypass $0"
-    exit 1
+    exit "$exit_code"
 }
 
 # 버전 정보 출력
@@ -85,15 +94,27 @@ parse_args() {
                 MYSQL_PASSWORD="$2"
                 shift 2
                 ;;
+            -o|--output)
+                RESULT_FILE="$2"
+                shift 2
+                ;;
+            -q|--quiet)
+                QUIET=true
+                shift
+                ;;
+            --no-color)
+                NO_COLOR=true
+                shift
+                ;;
             -v|--version)
                 show_version
                 ;;
             --help)
-                usage
+                usage 0
                 ;;
             *)
                 echo "Unknown option: $1"
-                usage
+                usage 1
                 ;;
         esac
     done
@@ -103,11 +124,19 @@ parse_args() {
     if [ -n "$MYSQL_PASSWORD" ]; then
         MYSQL_OPTS="${MYSQL_OPTS} -p${MYSQL_PASSWORD}"
     fi
+
+    if [ "$NO_COLOR" = true ]; then
+        RED=''
+        GREEN=''
+        YELLOW=''
+        BLUE=''
+        NC=''
+    fi
 }
 
 # MySQL/MariaDB 환경 확인
 check_mysql_environment() {
-    echo -e "${BLUE}Checking MySQL/MariaDB environment...${NC}"
+    [ "$QUIET" = true ] || echo -e "${BLUE}Checking MySQL/MariaDB environment...${NC}"
 
     # MySQL/MariaDB 클라이언트 설치 확인
     if ! command -v mysql &> /dev/null; then
@@ -149,19 +178,19 @@ check_mysql_environment() {
         exit 1
     fi
 
-    echo -e "${GREEN}MySQL/MariaDB environment check passed.${NC}"
+    [ "$QUIET" = true ] || echo -e "${GREEN}MySQL/MariaDB environment check passed.${NC}"
 }
 
 # Root 권한 확인
 check_root() {
     if [ "$EUID" -ne 0 ]; then
-        echo -e "${YELLOW}[WARNING] This script is recommended to run as root.${NC}"
+        [ "$QUIET" = true ] || echo -e "${YELLOW}[WARNING] This script is recommended to run as root.${NC}"
     fi
 }
 
 # MySQL 연결 확인
 check_mysql_connection() {
-    echo -e "${BLUE}Checking MySQL connection...${NC}"
+    [ "$QUIET" = true ] || echo -e "${BLUE}Checking MySQL connection...${NC}"
 
     if ! command -v mysql &>/dev/null; then
         echo -e "${RED}[ERROR] MySQL client is not installed.${NC}"
@@ -178,9 +207,15 @@ check_mysql_connection() {
         exit 1
     fi
 
-    # MySQL 버전 확인
-    local version=$($MYSQL_CMD $MYSQL_OPTS -e "SELECT VERSION()" -sN 2>/dev/null)
-    echo -e "${GREEN}[SUCCESS] Connected to MySQL/MariaDB: ${version}${NC}"
+    # MySQL/MariaDB 제품 및 버전 확인
+    DB_VERSION=$($MYSQL_CMD $MYSQL_OPTS -e "SELECT VERSION()" -sN 2>/dev/null)
+    DB_VERSION_COMMENT=$($MYSQL_CMD $MYSQL_OPTS -e "SELECT @@version_comment" -sN 2>/dev/null)
+    if echo "${DB_VERSION} ${DB_VERSION_COMMENT}" | grep -qi 'mariadb'; then
+        DB_PRODUCT="mariadb"
+    else
+        DB_PRODUCT="mysql"
+    fi
+    [ "$QUIET" = true ] || echo -e "${GREEN}[SUCCESS] Connected to ${DB_PRODUCT}: ${DB_VERSION}${NC}"
 }
 
 # 결과 파일 초기화
@@ -192,8 +227,10 @@ init_result_file() {
     echo "Hostname: $HOSTNAME" >> "$RESULT_FILE"
     echo "MySQL Host: $MYSQL_HOST:$MYSQL_PORT" >> "$RESULT_FILE"
 
-    local version=$($MYSQL_CMD $MYSQL_OPTS -e "SELECT VERSION()" -sN 2>/dev/null)
-    echo "MySQL Version: $version" >> "$RESULT_FILE"
+    echo "MySQL Version: $DB_VERSION" >> "$RESULT_FILE"
+    echo "DB Product: $DB_PRODUCT" >> "$RESULT_FILE"
+    echo "DB Version: $DB_VERSION" >> "$RESULT_FILE"
+    echo "DB Version Comment: $DB_VERSION_COMMENT" >> "$RESULT_FILE"
     echo "================================================================================" >> "$RESULT_FILE"
     echo "" >> "$RESULT_FILE"
 }
@@ -208,9 +245,13 @@ log_result() {
     echo "[${check_id}] ${check_name}" >> "$RESULT_FILE"
     echo "Status: ${status}" >> "$RESULT_FILE"
     echo "Detail: ${detail}" >> "$RESULT_FILE"
+    if [[ "$detail" =~ \[Risk:\ ([^]]+)\] ]]; then
+        echo "Risk: ${BASH_REMATCH[1]}" >> "$RESULT_FILE"
+    fi
     echo "--------------------------------------------------------------------------------" >> "$RESULT_FILE"
 
     # 화면 출력
+    [ "$QUIET" = true ] && return
     case "$status" in
         "PASS")
             echo -e "${GREEN}[PASS]${NC} [${check_id}] ${check_name}"
@@ -739,10 +780,12 @@ main() {
     # 명령행 인자 파싱 (--version, --help는 여기서 처리)
     parse_args "$@"
 
-    echo "================================================================================"
-    echo "MySQL/MariaDB Security Vulnerability Assessment Script"
-    echo "================================================================================"
-    echo ""
+    if [ "$QUIET" != true ]; then
+        echo "================================================================================"
+        echo "MySQL/MariaDB Security Vulnerability Assessment Script"
+        echo "================================================================================"
+        echo ""
+    fi
 
     # Root 권한 확인 (경고만)
     check_root
@@ -756,9 +799,11 @@ main() {
     # 결과 파일 초기화
     init_result_file
 
-    echo ""
-    echo "Starting security assessment..."
-    echo ""
+    if [ "$QUIET" != true ]; then
+        echo ""
+        echo "Starting security assessment..."
+        echo ""
+    fi
 
     # 최신 2026 DBMS 기준 MySQL/MariaDB 취약점 점검 실행 (D-* codes)
     check_d01
@@ -780,11 +825,13 @@ main() {
     echo "Assessment Completed: $(date '+%Y-%m-%d %H:%M:%S')" >> "$RESULT_FILE"
     echo "================================================================================" >> "$RESULT_FILE"
 
-    echo ""
-    echo "================================================================================"
-    echo -e "${GREEN}Assessment completed.${NC}"
-    echo "Result file: ${SCRIPT_DIR}/${RESULT_FILE}"
-    echo "================================================================================"
+    if [ "$QUIET" != true ]; then
+        echo ""
+        echo "================================================================================"
+        echo -e "${GREEN}Assessment completed.${NC}"
+        echo "Result file: ${SCRIPT_DIR}/${RESULT_FILE}"
+        echo "================================================================================"
+    fi
 }
 
 # 스크립트 실행

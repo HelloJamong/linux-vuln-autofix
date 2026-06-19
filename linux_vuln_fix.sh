@@ -27,6 +27,26 @@ FIX_RESULT_FILE="${HOSTNAME}_${DATE}_${TIME}_fix_result.txt"
 CHECK_SCRIPT="./linux_vuln_check.sh"
 CHECK_RESULT_FILE=""
 SCRIPT_DIR=$(dirname "$(readlink -f "$0")")
+QUIET=false
+NO_COLOR=false
+DRY_RUN=false
+
+# OS capability profile
+OS_ID="unknown"
+OS_VERSION_ID="unknown"
+OS_PRETTY_NAME="unknown"
+OS_MAJOR_VERSION="unknown"
+CAP_SYSTEMCTL="false"
+CAP_SYSTEMD_RUNTIME="false"
+CAP_AUTHSELECT="false"
+CAP_FAILLOCK_CONF="none"
+CAP_PAM_AUTH_FILES="none"
+CAP_FIREWALL_BACKEND="none"
+CAP_PACKAGE_MANAGER="unknown"
+CAP_TIME_SYNC="none"
+CAP_CRYPTO_POLICIES="false"
+CAP_SELINUX="unknown"
+CAP_NETWORK_TOOL="unknown"
 
 # 백업 디렉토리
 BACKUP_DIR="/var/backup/security_fix_${DATE}_${TIME}"
@@ -36,6 +56,8 @@ TOTAL_FIXES=0
 SUCCESS_FIXES=0
 FAILED_FIXES=0
 SKIPPED_FIXES=0
+PLANNED_FIXES=0
+MANUAL_FIXES=0
 
 #===============================================================================
 # 기본 함수들
@@ -43,12 +65,12 @@ SKIPPED_FIXES=0
 
 # 운영체제 환경 확인
 check_os_environment() {
-    echo -e "${BLUE}Checking operating system environment...${NC}"
+    [ "$QUIET" = true ] || echo -e "${BLUE}Checking operating system environment...${NC}"
 
     # /etc/os-release 파일 확인
     if [ ! -f /etc/os-release ]; then
         echo -e "${RED}[ERROR] /etc/os-release file not found.${NC}"
-        echo -e "${RED}[ERROR] This script is designed for RHEL or Rocky Linux 9.${NC}"
+        echo -e "${RED}[ERROR] This script is designed for Rocky Linux 8.10 or 9.x.${NC}"
         exit 1
     fi
 
@@ -58,28 +80,107 @@ check_os_environment() {
     # OS ID 확인 (rhel 또는 rocky)
     if [ "$ID" != "rhel" ] && [ "$ID" != "rocky" ]; then
         echo -e "${RED}[ERROR] Unsupported operating system: $ID${NC}"
-        echo -e "${RED}[ERROR] This script is designed for RHEL or Rocky Linux 9.${NC}"
+        echo -e "${RED}[ERROR] This script is designed for Rocky Linux 8.10 or 9.x.${NC}"
         echo -e "${RED}Current OS: ${NAME:-Unknown}${NC}"
         echo ""
         exit 1
     fi
 
-    # 버전 확인 (9.x)
+    # 버전 확인 (Rocky/RHEL 8.10 또는 9.x)
     local major_version=$(echo "$VERSION_ID" | cut -d. -f1)
-    if [ "$major_version" != "9" ]; then
+    OS_ID="${ID:-unknown}"
+    OS_VERSION_ID="${VERSION_ID:-unknown}"
+    OS_PRETTY_NAME="${PRETTY_NAME:-${NAME:-unknown}}"
+    OS_MAJOR_VERSION="$major_version"
+    if [ "$major_version" = "8" ] && [ "$VERSION_ID" != "8.10" ]; then
         echo -e "${RED}[ERROR] Unsupported OS version: $VERSION_ID${NC}"
-        echo -e "${RED}[ERROR] This script is designed for RHEL or Rocky Linux 9.${NC}"
+        echo -e "${RED}[ERROR] This script is designed for Rocky Linux 8.10 or 9.x.${NC}"
+        echo -e "${RED}Current OS: ${PRETTY_NAME:-Unknown}${NC}"
+        echo ""
+        exit 1
+    elif [ "$major_version" != "8" ] && [ "$major_version" != "9" ]; then
+        echo -e "${RED}[ERROR] Unsupported OS version: $VERSION_ID${NC}"
+        echo -e "${RED}[ERROR] This script is designed for Rocky Linux 8.10 or 9.x.${NC}"
         echo -e "${RED}Current OS: ${PRETTY_NAME:-Unknown}${NC}"
         echo ""
         exit 1
     fi
 
-    echo -e "${GREEN}Operating system check passed: ${PRETTY_NAME:-$NAME $VERSION_ID}${NC}"
+    [ "$QUIET" = true ] || echo -e "${GREEN}Operating system check passed: ${PRETTY_NAME:-$NAME $VERSION_ID}${NC}"
+}
+
+# OS 기능 감지
+detect_os_capabilities() {
+    if command -v systemctl >/dev/null 2>&1; then
+        CAP_SYSTEMCTL="true"
+    fi
+    if [ -d /run/systemd/system ]; then
+        CAP_SYSTEMD_RUNTIME="true"
+    fi
+    if command -v authselect >/dev/null 2>&1; then
+        CAP_AUTHSELECT="true"
+    fi
+    if [ -f /etc/security/faillock.conf ]; then
+        CAP_FAILLOCK_CONF="/etc/security/faillock.conf"
+    fi
+
+    local pam_files=()
+    [ -f /etc/pam.d/system-auth ] && pam_files+=("/etc/pam.d/system-auth")
+    [ -f /etc/pam.d/password-auth ] && pam_files+=("/etc/pam.d/password-auth")
+    if [ ${#pam_files[@]} -gt 0 ]; then
+        CAP_PAM_AUTH_FILES=$(IFS=,; echo "${pam_files[*]}")
+    fi
+
+    if command -v firewall-cmd >/dev/null 2>&1; then
+        CAP_FIREWALL_BACKEND="firewalld"
+    elif command -v nft >/dev/null 2>&1; then
+        CAP_FIREWALL_BACKEND="nftables"
+    elif command -v iptables >/dev/null 2>&1; then
+        CAP_FIREWALL_BACKEND="iptables"
+    fi
+
+    if command -v dnf >/dev/null 2>&1; then
+        CAP_PACKAGE_MANAGER="dnf"
+    elif command -v yum >/dev/null 2>&1; then
+        CAP_PACKAGE_MANAGER="yum"
+    elif command -v rpm >/dev/null 2>&1; then
+        CAP_PACKAGE_MANAGER="rpm"
+    fi
+
+    local time_services=()
+    command -v chronyd >/dev/null 2>&1 || [ -f /usr/sbin/chronyd ] && time_services+=("chronyd")
+    command -v ntpd >/dev/null 2>&1 || [ -f /usr/sbin/ntpd ] && time_services+=("ntpd")
+    if command -v timedatectl >/dev/null 2>&1; then
+        time_services+=("timedatectl")
+    fi
+    if [ ${#time_services[@]} -gt 0 ]; then
+        CAP_TIME_SYNC=$(IFS=,; echo "${time_services[*]}")
+    fi
+
+    if command -v update-crypto-policies >/dev/null 2>&1; then
+        CAP_CRYPTO_POLICIES="true"
+    fi
+    if command -v getenforce >/dev/null 2>&1; then
+        CAP_SELINUX=$(getenforce 2>/dev/null || echo "unknown")
+    fi
+    if command -v ss >/dev/null 2>&1; then
+        CAP_NETWORK_TOOL="ss"
+    elif command -v netstat >/dev/null 2>&1; then
+        CAP_NETWORK_TOOL="netstat"
+    fi
+
+    if [ "$QUIET" != true ]; then
+        echo -e "${BLUE}Capability profile: systemctl=${CAP_SYSTEMCTL}, systemd_runtime=${CAP_SYSTEMD_RUNTIME}, authselect=${CAP_AUTHSELECT}, firewall=${CAP_FIREWALL_BACKEND}, package_manager=${CAP_PACKAGE_MANAGER}${NC}"
+    fi
 }
 
 # Root 권한 확인
 check_root() {
     if [ "$EUID" -ne 0 ]; then
+        if [ "$DRY_RUN" = true ]; then
+            [ "$QUIET" = true ] || echo -e "${YELLOW}[WARNING] Dry-run mode is running without root privileges.${NC}"
+            return
+        fi
         echo -e "${RED}[ERROR] This script must be run as root.${NC}"
         exit 1
     fi
@@ -87,11 +188,16 @@ check_root() {
 
 # 사용법 출력
 usage() {
+    local exit_code="${1:-0}"
     cat << EOF
 Usage: $0 [OPTIONS]
 
 Options:
     -f, --file FILE     Use existing check result file (skip new check)
+    -o, --output FILE   Write remediation result to FILE
+    --dry-run           Show planned remediation without changing the system
+    -q, --quiet         Suppress progress output
+    --no-color          Disable colored terminal output
     -h, --help          Display this help message
     -v, --version       Show version information
 
@@ -107,13 +213,13 @@ Examples:
     sudo $0 -f hostname_261127_143022_result.txt
 
 EOF
-    exit 0
+    exit "$exit_code"
 }
 
 # 버전 정보 출력
 show_version() {
     echo "$SCRIPT_NAME v$VERSION"
-    echo "RHEL/Rocky Linux 9 Security Vulnerability Auto-Remediation"
+    echo "Rocky Linux 8.10/9.x Security Vulnerability Auto-Remediation"
     echo ""
     echo "For more information, see CHANGELOG.md"
     exit 0
@@ -127,34 +233,66 @@ parse_args() {
                 CHECK_RESULT_FILE="$2"
                 shift 2
                 ;;
+            -o|--output)
+                FIX_RESULT_FILE="$2"
+                shift 2
+                ;;
+            --dry-run)
+                DRY_RUN=true
+                shift
+                ;;
+            -q|--quiet)
+                QUIET=true
+                shift
+                ;;
+            --no-color)
+                NO_COLOR=true
+                shift
+                ;;
             -h|--help)
-                usage
+                usage 0
                 ;;
             -v|--version)
                 show_version
                 ;;
             *)
                 echo -e "${RED}Unknown option: $1${NC}"
-                usage
+                usage 1
                 ;;
         esac
     done
+
+    if [ "$NO_COLOR" = true ]; then
+        RED=''
+        GREEN=''
+        YELLOW=''
+        BLUE=''
+        NC=''
+    fi
 }
 
 # 백업 디렉토리 생성
 create_backup_dir() {
+    if [ "$DRY_RUN" = true ]; then
+        [ "$QUIET" = true ] || echo -e "${BLUE}[DRY-RUN] Backup directory would be created: $BACKUP_DIR${NC}"
+        return
+    fi
     if [ ! -d "$BACKUP_DIR" ]; then
         mkdir -p "$BACKUP_DIR"
-        echo -e "${BLUE}[INFO] Backup directory created: $BACKUP_DIR${NC}"
+        [ "$QUIET" = true ] || echo -e "${BLUE}[INFO] Backup directory created: $BACKUP_DIR${NC}"
     fi
 }
 
 # 파일 백업
 backup_file() {
     local file="$1"
+    if [ "$DRY_RUN" = true ]; then
+        [ "$QUIET" = true ] || echo -e "${BLUE}[DRY-RUN] Would back up $file${NC}"
+        return
+    fi
     if [ -f "$file" ]; then
         cp -p "$file" "$BACKUP_DIR/$(basename $file).bak"
-        echo -e "${BLUE}[BACKUP] $file${NC}"
+        [ "$QUIET" = true ] || echo -e "${BLUE}[BACKUP] $file${NC}"
     fi
 }
 
@@ -166,7 +304,22 @@ init_fix_result_file() {
     echo "Remediation Date: $(date '+%Y-%m-%d %H:%M:%S')" >> "$FIX_RESULT_FILE"
     echo "Hostname: $HOSTNAME" >> "$FIX_RESULT_FILE"
     echo "OS Version: $(cat /etc/redhat-release 2>/dev/null || echo 'Unknown')" >> "$FIX_RESULT_FILE"
+    echo "OS ID: $OS_ID" >> "$FIX_RESULT_FILE"
+    echo "OS VERSION_ID: $OS_VERSION_ID" >> "$FIX_RESULT_FILE"
+    echo "OS Major Version: $OS_MAJOR_VERSION" >> "$FIX_RESULT_FILE"
+    echo "Capability systemctl: $CAP_SYSTEMCTL" >> "$FIX_RESULT_FILE"
+    echo "Capability systemd_runtime: $CAP_SYSTEMD_RUNTIME" >> "$FIX_RESULT_FILE"
+    echo "Capability authselect: $CAP_AUTHSELECT" >> "$FIX_RESULT_FILE"
+    echo "Capability faillock_conf: $CAP_FAILLOCK_CONF" >> "$FIX_RESULT_FILE"
+    echo "Capability pam_auth_files: $CAP_PAM_AUTH_FILES" >> "$FIX_RESULT_FILE"
+    echo "Capability firewall_backend: $CAP_FIREWALL_BACKEND" >> "$FIX_RESULT_FILE"
+    echo "Capability package_manager: $CAP_PACKAGE_MANAGER" >> "$FIX_RESULT_FILE"
+    echo "Capability time_sync: $CAP_TIME_SYNC" >> "$FIX_RESULT_FILE"
+    echo "Capability crypto_policies: $CAP_CRYPTO_POLICIES" >> "$FIX_RESULT_FILE"
+    echo "Capability selinux: $CAP_SELINUX" >> "$FIX_RESULT_FILE"
+    echo "Capability network_tool: $CAP_NETWORK_TOOL" >> "$FIX_RESULT_FILE"
     echo "Backup Directory: $BACKUP_DIR" >> "$FIX_RESULT_FILE"
+    echo "Mode: $([ "$DRY_RUN" = true ] && echo "DRY-RUN" || echo "APPLY")" >> "$FIX_RESULT_FILE"
     echo "================================================================================" >> "$FIX_RESULT_FILE"
     echo "" >> "$FIX_RESULT_FILE"
 }
@@ -186,16 +339,24 @@ log_fix_result() {
     # 화면 출력
     case "$status" in
         "SUCCESS")
-            echo -e "${GREEN}[SUCCESS]${NC} [${check_id}] ${check_name}"
+            [ "$QUIET" = true ] || echo -e "${GREEN}[SUCCESS]${NC} [${check_id}] ${check_name}"
             ((SUCCESS_FIXES++))
             ;;
         "FAILED")
-            echo -e "${RED}[FAILED]${NC} [${check_id}] ${check_name}"
+            [ "$QUIET" = true ] || echo -e "${RED}[FAILED]${NC} [${check_id}] ${check_name}"
             ((FAILED_FIXES++))
             ;;
         "SKIPPED")
-            echo -e "${YELLOW}[SKIPPED]${NC} [${check_id}] ${check_name}"
+            [ "$QUIET" = true ] || echo -e "${YELLOW}[SKIPPED]${NC} [${check_id}] ${check_name}"
             ((SKIPPED_FIXES++))
+            ;;
+        "PLANNED")
+            [ "$QUIET" = true ] || echo -e "${BLUE}[PLANNED]${NC} [${check_id}] ${check_name}"
+            ((PLANNED_FIXES++))
+            ;;
+        "MANUAL")
+            [ "$QUIET" = true ] || echo -e "${YELLOW}[MANUAL]${NC} [${check_id}] ${check_name}"
+            ((MANUAL_FIXES++))
             ;;
     esac
     ((TOTAL_FIXES++))
@@ -1657,6 +1818,16 @@ latest_run_legacy_fix() {
     [ -z "$status" ] && status="PASS"
     [ -z "$detail" ] && detail="Mapped from ${new_id} to legacy ${legacy_id}"
 
+    if [ "$DRY_RUN" = true ]; then
+        rm -f "$tmp_check" "$tmp_fix"
+        if [ "$status" = "FAIL" ]; then
+            log_fix_result "$new_id" "$new_name" "PLANNED" "Dry-run: would run mapped remediation ${legacy_func}. Current finding: ${detail}"
+        else
+            log_fix_result "$new_id" "$new_name" "SKIPPED" "Already passed or N/A"
+        fi
+        return
+    fi
+
     {
         echo "[${legacy_id}] ${new_name}"
         echo "Status: ${status}"
@@ -1682,6 +1853,10 @@ latest_manual_fix() {
     local message="$4"
     if ! latest_is_failed "$id" "$fallback_id"; then
         log_fix_result "$id" "$name" "SKIPPED" "Already passed or N/A"
+        return
+    fi
+    if [ "$DRY_RUN" = true ]; then
+        log_fix_result "$id" "$name" "MANUAL" "Dry-run: manual intervention required. ${message}"
         return
     fi
     log_fix_result "$id" "$name" "FAILED" "Manual intervention required. ${message}"
@@ -1764,23 +1939,32 @@ main() {
     # 파라미터 파싱 (--version, --help는 여기서 처리)
     parse_args "$@"
 
-    echo -e "${BLUE}================================================================================${NC}"
-    echo -e "${BLUE}RHEL/Rocky Linux 9 Security Vulnerability Auto-Remediation Script${NC}"
-    echo -e "${BLUE}================================================================================${NC}"
-    echo ""
+    if [ "$QUIET" != true ]; then
+        echo -e "${BLUE}================================================================================${NC}"
+        echo -e "${BLUE}Rocky Linux 8.10/9.x Security Vulnerability Auto-Remediation Script${NC}"
+        echo -e "${BLUE}================================================================================${NC}"
+        echo ""
+    fi
 
-    # Root 권한 확인
-    check_root
+    if [ "$DRY_RUN" = true ] && [ -n "$CHECK_RESULT_FILE" ] && [ -f "$CHECK_RESULT_FILE" ]; then
+        [ "$QUIET" = true ] || echo -e "${BLUE}[DRY-RUN] Using provided result file without OS/root preflight.${NC}"
+    else
+        # Root 권한 확인
+        check_root
 
-    # 운영체제 환경 확인
-    check_os_environment
+        # 운영체제 환경 확인
+        check_os_environment
+
+        # OS 기능 감지
+        detect_os_capabilities
+    fi
 
     # 백업 디렉토리 생성
     create_backup_dir
 
     # 점검 결과 파일이 없으면 점검 스크립트 실행
     if [ -z "$CHECK_RESULT_FILE" ] || [ ! -f "$CHECK_RESULT_FILE" ]; then
-        echo -e "${YELLOW}[INFO] No check result file provided. Running vulnerability check first...${NC}"
+        [ "$QUIET" = true ] || echo -e "${YELLOW}[INFO] No check result file provided. Running vulnerability check first...${NC}"
 
         if [ ! -f "$CHECK_SCRIPT" ]; then
             echo -e "${RED}[ERROR] Check script not found: $CHECK_SCRIPT${NC}"
@@ -1788,7 +1972,10 @@ main() {
         fi
 
         # 점검 스크립트 실행
-        bash "$CHECK_SCRIPT"
+        check_args=()
+        [ "$QUIET" = true ] && check_args+=(--quiet)
+        [ "$NO_COLOR" = true ] && check_args+=(--no-color)
+        bash "$CHECK_SCRIPT" "${check_args[@]}"
 
         # 가장 최근 생성된 결과 파일 찾기
         CHECK_RESULT_FILE=$(ls -t ${HOSTNAME}_*_result.txt 2>/dev/null | head -1)
@@ -1798,18 +1985,24 @@ main() {
             exit 1
         fi
 
-        echo -e "${GREEN}[SUCCESS] Vulnerability check completed: $CHECK_RESULT_FILE${NC}"
-        echo ""
+        if [ "$QUIET" != true ]; then
+            echo -e "${GREEN}[SUCCESS] Vulnerability check completed: $CHECK_RESULT_FILE${NC}"
+            echo ""
+        fi
     else
-        echo -e "${BLUE}[INFO] Using existing check result file: $CHECK_RESULT_FILE${NC}"
-        echo ""
+        if [ "$QUIET" != true ]; then
+            echo -e "${BLUE}[INFO] Using existing check result file: $CHECK_RESULT_FILE${NC}"
+            echo ""
+        fi
     fi
 
     # 조치 결과 파일 초기화
     init_fix_result_file
 
-    echo -e "${BLUE}[INFO] Starting vulnerability remediation...${NC}"
-    echo ""
+    if [ "$QUIET" != true ]; then
+        echo -e "${BLUE}[INFO] Starting vulnerability remediation...${NC}"
+        echo ""
+    fi
 
     # 최신 2026 UNIX/Linux 기준 모든 조치 함수 실행 (U-01 ~ U-67)
     latest_fix_u01
@@ -1881,19 +2074,23 @@ main() {
     latest_fix_u67
 
     # 최종 통계 출력
-    echo ""
-    echo -e "${BLUE}================================================================================${NC}"
-    echo -e "${BLUE}Remediation Summary${NC}"
-    echo -e "${BLUE}================================================================================${NC}"
-    echo -e "Total fixes attempted: ${TOTAL_FIXES}"
-    echo -e "${GREEN}Successful fixes: ${SUCCESS_FIXES}${NC}"
-    echo -e "${RED}Failed fixes: ${FAILED_FIXES}${NC}"
-    echo -e "${YELLOW}Skipped fixes: ${SKIPPED_FIXES}${NC}"
-    echo -e "${BLUE}================================================================================${NC}"
-    echo ""
-    echo -e "${BLUE}[INFO] Remediation result saved to: $FIX_RESULT_FILE${NC}"
-    echo -e "${BLUE}[INFO] Backup files saved to: $BACKUP_DIR${NC}"
-    echo ""
+    if [ "$QUIET" != true ]; then
+        echo ""
+        echo -e "${BLUE}================================================================================${NC}"
+        echo -e "${BLUE}Remediation Summary${NC}"
+        echo -e "${BLUE}================================================================================${NC}"
+        echo -e "Total fixes attempted: ${TOTAL_FIXES}"
+        echo -e "${GREEN}Successful fixes: ${SUCCESS_FIXES}${NC}"
+        echo -e "${RED}Failed fixes: ${FAILED_FIXES}${NC}"
+        echo -e "${YELLOW}Skipped fixes: ${SKIPPED_FIXES}${NC}"
+        echo -e "${BLUE}Planned fixes: ${PLANNED_FIXES}${NC}"
+        echo -e "${YELLOW}Manual fixes: ${MANUAL_FIXES}${NC}"
+        echo -e "${BLUE}================================================================================${NC}"
+        echo ""
+        echo -e "${BLUE}[INFO] Remediation result saved to: $FIX_RESULT_FILE${NC}"
+        echo -e "${BLUE}[INFO] Backup files saved to: $BACKUP_DIR${NC}"
+        echo ""
+    fi
 
     # 최종 통계를 결과 파일에도 기록
     {
@@ -1905,6 +2102,8 @@ main() {
         echo "Successful fixes: ${SUCCESS_FIXES}"
         echo "Failed fixes: ${FAILED_FIXES}"
         echo "Skipped fixes: ${SKIPPED_FIXES}"
+        echo "Planned fixes: ${PLANNED_FIXES}"
+        echo "Manual fixes: ${MANUAL_FIXES}"
         echo "================================================================================"
     } >> "$FIX_RESULT_FILE"
 }

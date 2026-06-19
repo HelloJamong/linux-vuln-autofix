@@ -15,6 +15,7 @@ SCRIPT_NAME="Linux Vulnerability Check Script"
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
 # 결과 파일 설정
@@ -23,15 +24,103 @@ DATE=$(date +%y%m%d)
 TIME=$(date +%H%M%S)
 RESULT_FILE="${HOSTNAME}_${DATE}_${TIME}_result.txt"
 SCRIPT_DIR=$(dirname "$(readlink -f "$0")")
+QUIET=false
+NO_COLOR=false
+
+# OS capability profile
+OS_ID="unknown"
+OS_VERSION_ID="unknown"
+OS_PRETTY_NAME="unknown"
+OS_MAJOR_VERSION="unknown"
+CAP_SYSTEMCTL="false"
+CAP_SYSTEMD_RUNTIME="false"
+CAP_AUTHSELECT="false"
+CAP_FAILLOCK_CONF="none"
+CAP_PAM_AUTH_FILES="none"
+CAP_FIREWALL_BACKEND="none"
+CAP_PACKAGE_MANAGER="unknown"
+CAP_TIME_SYNC="none"
+CAP_CRYPTO_POLICIES="false"
+CAP_SELINUX="unknown"
+CAP_NETWORK_TOOL="unknown"
+
+usage() {
+    local exit_code="${1:-0}"
+    cat << EOF
+Usage: $0 [OPTIONS]
+
+Options:
+    -o, --output FILE    Write assessment result to FILE
+    -q, --quiet          Suppress progress output
+    --no-color           Disable colored terminal output
+    -h, --help           Display this help message
+    -v, --version        Show version information
+
+Description:
+    This script assesses Linux security vulnerabilities and writes the result
+    to a timestamped report file by default.
+
+Examples:
+    sudo $0
+    sudo $0 --output hostname_YYMMDD_hhmmss_result.txt
+
+EOF
+    exit "$exit_code"
+}
+
+show_version() {
+    echo "$SCRIPT_NAME v$VERSION"
+    echo "Rocky Linux 8.10/9.x Security Vulnerability Assessment"
+    echo ""
+    echo "For more information, see CHANGELOG.md"
+    exit 0
+}
+
+parse_args() {
+    while [[ $# -gt 0 ]]; do
+        case $1 in
+            -o|--output)
+                RESULT_FILE="$2"
+                shift 2
+                ;;
+            -q|--quiet)
+                QUIET=true
+                shift
+                ;;
+            --no-color)
+                NO_COLOR=true
+                shift
+                ;;
+            -h|--help)
+                usage 0
+                ;;
+            -v|--version)
+                show_version
+                ;;
+            *)
+                echo -e "${RED}Unknown option: $1${NC}"
+                usage 1
+                ;;
+        esac
+    done
+
+    if [ "$NO_COLOR" = true ]; then
+        RED=''
+        GREEN=''
+        YELLOW=''
+        BLUE=''
+        NC=''
+    fi
+}
 
 # 운영체제 환경 확인
 check_os_environment() {
-    echo -e "${BLUE}Checking operating system environment...${NC}"
+    [ "$QUIET" = true ] || echo -e "${BLUE}Checking operating system environment...${NC}"
 
     # /etc/os-release 파일 확인
     if [ ! -f /etc/os-release ]; then
         echo -e "${RED}[ERROR] /etc/os-release file not found.${NC}"
-        echo -e "${RED}[ERROR] This script is designed for RHEL or Rocky Linux 9.${NC}"
+        echo -e "${RED}[ERROR] This script is designed for Rocky Linux 8.10 or 9.x.${NC}"
         exit 1
     fi
 
@@ -41,23 +130,98 @@ check_os_environment() {
     # OS ID 확인 (rhel 또는 rocky)
     if [ "$ID" != "rhel" ] && [ "$ID" != "rocky" ]; then
         echo -e "${RED}[ERROR] Unsupported operating system: $ID${NC}"
-        echo -e "${RED}[ERROR] This script is designed for RHEL or Rocky Linux 9.${NC}"
+        echo -e "${RED}[ERROR] This script is designed for Rocky Linux 8.10 or 9.x.${NC}"
         echo -e "${RED}Current OS: ${NAME:-Unknown}${NC}"
         echo ""
         exit 1
     fi
 
-    # 버전 확인 (9.x)
+    # 버전 확인 (Rocky/RHEL 8.10 또는 9.x)
     local major_version=$(echo "$VERSION_ID" | cut -d. -f1)
-    if [ "$major_version" != "9" ]; then
+    OS_ID="${ID:-unknown}"
+    OS_VERSION_ID="${VERSION_ID:-unknown}"
+    OS_PRETTY_NAME="${PRETTY_NAME:-${NAME:-unknown}}"
+    OS_MAJOR_VERSION="$major_version"
+    if [ "$major_version" = "8" ] && [ "$VERSION_ID" != "8.10" ]; then
         echo -e "${RED}[ERROR] Unsupported OS version: $VERSION_ID${NC}"
-        echo -e "${RED}[ERROR] This script is designed for RHEL or Rocky Linux 9.${NC}"
+        echo -e "${RED}[ERROR] This script is designed for Rocky Linux 8.10 or 9.x.${NC}"
+        echo -e "${RED}Current OS: ${PRETTY_NAME:-Unknown}${NC}"
+        echo ""
+        exit 1
+    elif [ "$major_version" != "8" ] && [ "$major_version" != "9" ]; then
+        echo -e "${RED}[ERROR] Unsupported OS version: $VERSION_ID${NC}"
+        echo -e "${RED}[ERROR] This script is designed for Rocky Linux 8.10 or 9.x.${NC}"
         echo -e "${RED}Current OS: ${PRETTY_NAME:-Unknown}${NC}"
         echo ""
         exit 1
     fi
 
-    echo -e "${GREEN}Operating system check passed: ${PRETTY_NAME:-$NAME $VERSION_ID}${NC}"
+    [ "$QUIET" = true ] || echo -e "${GREEN}Operating system check passed: ${PRETTY_NAME:-$NAME $VERSION_ID}${NC}"
+}
+
+# OS 기능 감지
+detect_os_capabilities() {
+    if command -v systemctl >/dev/null 2>&1; then
+        CAP_SYSTEMCTL="true"
+    fi
+    if [ -d /run/systemd/system ]; then
+        CAP_SYSTEMD_RUNTIME="true"
+    fi
+    if command -v authselect >/dev/null 2>&1; then
+        CAP_AUTHSELECT="true"
+    fi
+    if [ -f /etc/security/faillock.conf ]; then
+        CAP_FAILLOCK_CONF="/etc/security/faillock.conf"
+    fi
+
+    local pam_files=()
+    [ -f /etc/pam.d/system-auth ] && pam_files+=("/etc/pam.d/system-auth")
+    [ -f /etc/pam.d/password-auth ] && pam_files+=("/etc/pam.d/password-auth")
+    if [ ${#pam_files[@]} -gt 0 ]; then
+        CAP_PAM_AUTH_FILES=$(IFS=,; echo "${pam_files[*]}")
+    fi
+
+    if command -v firewall-cmd >/dev/null 2>&1; then
+        CAP_FIREWALL_BACKEND="firewalld"
+    elif command -v nft >/dev/null 2>&1; then
+        CAP_FIREWALL_BACKEND="nftables"
+    elif command -v iptables >/dev/null 2>&1; then
+        CAP_FIREWALL_BACKEND="iptables"
+    fi
+
+    if command -v dnf >/dev/null 2>&1; then
+        CAP_PACKAGE_MANAGER="dnf"
+    elif command -v yum >/dev/null 2>&1; then
+        CAP_PACKAGE_MANAGER="yum"
+    elif command -v rpm >/dev/null 2>&1; then
+        CAP_PACKAGE_MANAGER="rpm"
+    fi
+
+    local time_services=()
+    command -v chronyd >/dev/null 2>&1 || [ -f /usr/sbin/chronyd ] && time_services+=("chronyd")
+    command -v ntpd >/dev/null 2>&1 || [ -f /usr/sbin/ntpd ] && time_services+=("ntpd")
+    if command -v timedatectl >/dev/null 2>&1; then
+        time_services+=("timedatectl")
+    fi
+    if [ ${#time_services[@]} -gt 0 ]; then
+        CAP_TIME_SYNC=$(IFS=,; echo "${time_services[*]}")
+    fi
+
+    if command -v update-crypto-policies >/dev/null 2>&1; then
+        CAP_CRYPTO_POLICIES="true"
+    fi
+    if command -v getenforce >/dev/null 2>&1; then
+        CAP_SELINUX=$(getenforce 2>/dev/null || echo "unknown")
+    fi
+    if command -v ss >/dev/null 2>&1; then
+        CAP_NETWORK_TOOL="ss"
+    elif command -v netstat >/dev/null 2>&1; then
+        CAP_NETWORK_TOOL="netstat"
+    fi
+
+    if [ "$QUIET" != true ]; then
+        echo -e "${BLUE}Capability profile: systemctl=${CAP_SYSTEMCTL}, systemd_runtime=${CAP_SYSTEMD_RUNTIME}, authselect=${CAP_AUTHSELECT}, firewall=${CAP_FIREWALL_BACKEND}, package_manager=${CAP_PACKAGE_MANAGER}${NC}"
+    fi
 }
 
 # Root 권한 확인
@@ -76,6 +240,20 @@ init_result_file() {
     echo "Assessment Date: $(date '+%Y-%m-%d %H:%M:%S')" >> "$RESULT_FILE"
     echo "Hostname: $HOSTNAME" >> "$RESULT_FILE"
     echo "OS Version: $(cat /etc/redhat-release 2>/dev/null || echo 'Unknown')" >> "$RESULT_FILE"
+    echo "OS ID: $OS_ID" >> "$RESULT_FILE"
+    echo "OS VERSION_ID: $OS_VERSION_ID" >> "$RESULT_FILE"
+    echo "OS Major Version: $OS_MAJOR_VERSION" >> "$RESULT_FILE"
+    echo "Capability systemctl: $CAP_SYSTEMCTL" >> "$RESULT_FILE"
+    echo "Capability systemd_runtime: $CAP_SYSTEMD_RUNTIME" >> "$RESULT_FILE"
+    echo "Capability authselect: $CAP_AUTHSELECT" >> "$RESULT_FILE"
+    echo "Capability faillock_conf: $CAP_FAILLOCK_CONF" >> "$RESULT_FILE"
+    echo "Capability pam_auth_files: $CAP_PAM_AUTH_FILES" >> "$RESULT_FILE"
+    echo "Capability firewall_backend: $CAP_FIREWALL_BACKEND" >> "$RESULT_FILE"
+    echo "Capability package_manager: $CAP_PACKAGE_MANAGER" >> "$RESULT_FILE"
+    echo "Capability time_sync: $CAP_TIME_SYNC" >> "$RESULT_FILE"
+    echo "Capability crypto_policies: $CAP_CRYPTO_POLICIES" >> "$RESULT_FILE"
+    echo "Capability selinux: $CAP_SELINUX" >> "$RESULT_FILE"
+    echo "Capability network_tool: $CAP_NETWORK_TOOL" >> "$RESULT_FILE"
     echo "================================================================================" >> "$RESULT_FILE"
     echo "" >> "$RESULT_FILE"
 }
@@ -90,9 +268,13 @@ log_result() {
     echo "[${check_id}] ${check_name}" >> "$RESULT_FILE"
     echo "Status: ${status}" >> "$RESULT_FILE"
     echo "Detail: ${detail}" >> "$RESULT_FILE"
+    if [[ "$detail" =~ \[Risk:\ ([^]]+)\] ]]; then
+        echo "Risk: ${BASH_REMATCH[1]}" >> "$RESULT_FILE"
+    fi
     echo "--------------------------------------------------------------------------------" >> "$RESULT_FILE"
 
     # 화면 출력
+    [ "$QUIET" = true ] && return
     case "$status" in
         "PASS")
             echo -e "${GREEN}[PASS]${NC} [${check_id}] ${check_name}"
@@ -2897,10 +3079,14 @@ latest_check_u66() { latest_run_legacy_check "U-66" "정책에 따른 시스템 
 #===============================================================================
 
 main() {
-    echo "================================================================================"
-    echo "RHEL/Rocky Linux 9 Security Vulnerability Assessment Script"
-    echo "================================================================================"
-    echo ""
+    parse_args "$@"
+
+    if [ "$QUIET" != true ]; then
+        echo "================================================================================"
+        echo "Rocky Linux 8.10/9.x Security Vulnerability Assessment Script"
+        echo "================================================================================"
+        echo ""
+    fi
 
     # Root 권한 확인
     check_root
@@ -2908,11 +3094,16 @@ main() {
     # 운영체제 환경 확인
     check_os_environment
 
+    # OS 기능 감지
+    detect_os_capabilities
+
     # 결과 파일 초기화
     init_result_file
 
-    echo "Starting security assessment..."
-    echo ""
+    if [ "$QUIET" != true ]; then
+        echo "Starting security assessment..."
+        echo ""
+    fi
 
     # 최신 2026 UNIX/Linux 기준 취약점 점검 실행 (U-01 ~ U-67)
     latest_check_u01
@@ -2989,26 +3180,14 @@ main() {
     echo "Assessment Completed: $(date '+%Y-%m-%d %H:%M:%S')" >> "$RESULT_FILE"
     echo "================================================================================" >> "$RESULT_FILE"
 
-    echo ""
-    echo "================================================================================"
-    echo -e "${GREEN}Assessment completed.${NC}"
-    echo "Result file: ${SCRIPT_DIR}/${RESULT_FILE}"
-    echo "================================================================================"
+    if [ "$QUIET" != true ]; then
+        echo ""
+        echo "================================================================================"
+        echo -e "${GREEN}Assessment completed.${NC}"
+        echo "Result file: ${SCRIPT_DIR}/${RESULT_FILE}"
+        echo "================================================================================"
+    fi
 }
-
-# 버전 정보 출력
-show_version() {
-    echo "$SCRIPT_NAME v$VERSION"
-    echo "RHEL/Rocky Linux 9 Security Vulnerability Assessment"
-    echo ""
-    echo "For more information, see CHANGELOG.md"
-}
-
-# 명령행 인자 처리 (버전 체크)
-if [ "$1" = "--version" ] || [ "$1" = "-v" ]; then
-    show_version
-    exit 0
-fi
 
 # 스크립트 실행
 main "$@"

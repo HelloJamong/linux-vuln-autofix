@@ -27,12 +27,18 @@ FIX_RESULT_FILE="${HOSTNAME}_${DATE}_${TIME}_mysql_fix_result.txt"
 CHECK_SCRIPT="./db_vuln_check.sh"
 CHECK_RESULT_FILE=""
 SCRIPT_DIR=$(dirname "$(readlink -f "$0")")
+QUIET=false
+NO_COLOR=false
+DRY_RUN=false
 
 # MySQL 접속 정보
 MYSQL_HOST="${MYSQL_HOST:-localhost}"
 MYSQL_PORT="${MYSQL_PORT:-3306}"
 MYSQL_USER="${MYSQL_USER:-root}"
 MYSQL_PASSWORD="${MYSQL_PASSWORD:-}"
+DB_PRODUCT="unknown"
+DB_VERSION=""
+DB_VERSION_COMMENT=""
 
 # MySQL 명령어 옵션
 MYSQL_CMD="mysql"
@@ -46,6 +52,8 @@ TOTAL_FIXES=0
 SUCCESS_FIXES=0
 FAILED_FIXES=0
 SKIPPED_FIXES=0
+PLANNED_FIXES=0
+MANUAL_FIXES=0
 
 #===============================================================================
 # 기본 함수들
@@ -53,6 +61,7 @@ SKIPPED_FIXES=0
 
 # 사용법 출력
 usage() {
+    local exit_code="${1:-0}"
     cat << EOF
 Usage: $0 [OPTIONS]
 
@@ -62,6 +71,10 @@ Options:
     -u, --user USER         MySQL user (default: root)
     -p, --password PASS     MySQL password
     -f, --file FILE         Use existing check result file (skip new check)
+    -o, --output FILE       Write remediation result to FILE
+    --dry-run               Show planned remediation without changing the database
+    -q, --quiet             Suppress progress output
+    --no-color              Disable colored terminal output
     -v, --version           Show version information
     --help                  Display this help message
 
@@ -84,7 +97,7 @@ Examples:
     ./db_vuln_fix.sh -u root
 
 EOF
-    exit 0
+    exit "$exit_code"
 }
 
 # 버전 정보 출력
@@ -120,15 +133,31 @@ parse_args() {
                 CHECK_RESULT_FILE="$2"
                 shift 2
                 ;;
+            -o|--output)
+                FIX_RESULT_FILE="$2"
+                shift 2
+                ;;
+            --dry-run)
+                DRY_RUN=true
+                shift
+                ;;
+            -q|--quiet)
+                QUIET=true
+                shift
+                ;;
+            --no-color)
+                NO_COLOR=true
+                shift
+                ;;
             -v|--version)
                 show_version
                 ;;
             --help)
-                usage
+                usage 0
                 ;;
             *)
                 echo -e "${RED}Unknown option: $1${NC}"
-                usage
+                usage 1
                 ;;
         esac
     done
@@ -138,11 +167,19 @@ parse_args() {
     if [ -n "$MYSQL_PASSWORD" ]; then
         MYSQL_OPTS="${MYSQL_OPTS} -p${MYSQL_PASSWORD}"
     fi
+
+    if [ "$NO_COLOR" = true ]; then
+        RED=''
+        GREEN=''
+        YELLOW=''
+        BLUE=''
+        NC=''
+    fi
 }
 
 # MySQL/MariaDB 환경 확인
 check_mysql_environment() {
-    echo -e "${BLUE}Checking MySQL/MariaDB environment...${NC}"
+    [ "$QUIET" = true ] || echo -e "${BLUE}Checking MySQL/MariaDB environment...${NC}"
 
     # MySQL/MariaDB 클라이언트 설치 확인
     if ! command -v mysql &> /dev/null; then
@@ -184,7 +221,7 @@ check_mysql_environment() {
         exit 1
     fi
 
-    echo -e "${GREEN}MySQL/MariaDB environment check passed.${NC}"
+    [ "$QUIET" = true ] || echo -e "${GREEN}MySQL/MariaDB environment check passed.${NC}"
 }
 
 # MySQL 연결 확인
@@ -203,13 +240,26 @@ check_mysql_connection() {
         echo -e "  User: ${MYSQL_USER}"
         exit 1
     fi
+
+    DB_VERSION=$($MYSQL_CMD $MYSQL_OPTS -e "SELECT VERSION()" -sN 2>/dev/null)
+    DB_VERSION_COMMENT=$($MYSQL_CMD $MYSQL_OPTS -e "SELECT @@version_comment" -sN 2>/dev/null)
+    if echo "${DB_VERSION} ${DB_VERSION_COMMENT}" | grep -qi 'mariadb'; then
+        DB_PRODUCT="mariadb"
+    else
+        DB_PRODUCT="mysql"
+    fi
+    [ "$QUIET" = true ] || echo -e "${GREEN}[SUCCESS] Connected to ${DB_PRODUCT}: ${DB_VERSION}${NC}"
 }
 
 # 백업 디렉토리 생성
 create_backup_dir() {
+    if [ "$DRY_RUN" = true ]; then
+        [ "$QUIET" = true ] || echo -e "${BLUE}[DRY-RUN] Backup directory would be created: $BACKUP_DIR${NC}"
+        return
+    fi
     if [ ! -d "$BACKUP_DIR" ]; then
         mkdir -p "$BACKUP_DIR"
-        echo -e "${BLUE}[INFO] Backup directory created: $BACKUP_DIR${NC}"
+        [ "$QUIET" = true ] || echo -e "${BLUE}[INFO] Backup directory created: $BACKUP_DIR${NC}"
     fi
 }
 
@@ -222,9 +272,12 @@ init_fix_result_file() {
     echo "Hostname: $HOSTNAME" >> "$FIX_RESULT_FILE"
     echo "MySQL Host: $MYSQL_HOST:$MYSQL_PORT" >> "$FIX_RESULT_FILE"
 
-    local version=$($MYSQL_CMD $MYSQL_OPTS -e "SELECT VERSION()" -sN 2>/dev/null)
-    echo "MySQL Version: $version" >> "$FIX_RESULT_FILE"
+    echo "MySQL Version: $DB_VERSION" >> "$FIX_RESULT_FILE"
+    echo "DB Product: $DB_PRODUCT" >> "$FIX_RESULT_FILE"
+    echo "DB Version: $DB_VERSION" >> "$FIX_RESULT_FILE"
+    echo "DB Version Comment: $DB_VERSION_COMMENT" >> "$FIX_RESULT_FILE"
     echo "Backup Directory: $BACKUP_DIR" >> "$FIX_RESULT_FILE"
+    echo "Mode: $([ "$DRY_RUN" = true ] && echo "DRY-RUN" || echo "APPLY")" >> "$FIX_RESULT_FILE"
     echo "================================================================================" >> "$FIX_RESULT_FILE"
     echo "" >> "$FIX_RESULT_FILE"
 }
@@ -244,16 +297,24 @@ log_fix_result() {
     # 화면 출력
     case "$status" in
         "SUCCESS")
-            echo -e "${GREEN}[SUCCESS]${NC} [${check_id}] ${check_name}"
+            [ "$QUIET" = true ] || echo -e "${GREEN}[SUCCESS]${NC} [${check_id}] ${check_name}"
             ((SUCCESS_FIXES++))
             ;;
         "FAILED")
-            echo -e "${RED}[FAILED]${NC} [${check_id}] ${check_name}"
+            [ "$QUIET" = true ] || echo -e "${RED}[FAILED]${NC} [${check_id}] ${check_name}"
             ((FAILED_FIXES++))
             ;;
         "SKIPPED")
-            echo -e "${YELLOW}[SKIPPED]${NC} [${check_id}] ${check_name}"
+            [ "$QUIET" = true ] || echo -e "${YELLOW}[SKIPPED]${NC} [${check_id}] ${check_name}"
             ((SKIPPED_FIXES++))
+            ;;
+        "PLANNED")
+            [ "$QUIET" = true ] || echo -e "${BLUE}[PLANNED]${NC} [${check_id}] ${check_name}"
+            ((PLANNED_FIXES++))
+            ;;
+        "MANUAL")
+            [ "$QUIET" = true ] || echo -e "${YELLOW}[MANUAL]${NC} [${check_id}] ${check_name}"
+            ((MANUAL_FIXES++))
             ;;
     esac
     ((TOTAL_FIXES++))
@@ -596,6 +657,10 @@ d_manual_fix() {
         log_fix_result "$id" "$name" "SKIPPED" "Already passed or N/A"
         return
     fi
+    if [ "$DRY_RUN" = true ]; then
+        log_fix_result "$id" "$name" "MANUAL" "Dry-run: manual intervention required. ${message}"
+        return
+    fi
     log_fix_result "$id" "$name" "FAILED" "Manual intervention required. ${message}"
 }
 
@@ -608,6 +673,10 @@ fix_d02() {
     local id="D-02" name="데이터베이스의 불필요 계정을 제거하거나, 잠금설정 후 사용"
     if ! d_is_failed "$id" "MX-02" "MX-07" "MX-08"; then
         log_fix_result "$id" "$name" "SKIPPED" "Already passed or N/A"
+        return
+    fi
+    if [ "$DRY_RUN" = true ]; then
+        log_fix_result "$id" "$name" "PLANNED" "Dry-run: would delete anonymous accounts, drop test database if present, and flush privileges."
         return
     fi
     local result1 result2 rc=0
@@ -625,6 +694,10 @@ fix_d03() {
     local id="D-03" name="비밀번호 사용 기간 및 복잡도를 기관의 정책에 맞도록 설정"
     if ! d_is_failed "$id" "MX-04"; then
         log_fix_result "$id" "$name" "SKIPPED" "Already passed or N/A"
+        return
+    fi
+    if [ "$DRY_RUN" = true ]; then
+        log_fix_result "$id" "$name" "PLANNED" "Dry-run: would install/enable password validation controls and set password complexity/lifetime globals where supported."
         return
     fi
     execute_query "INSTALL COMPONENT 'file://component_validate_password';" >/dev/null 2>&1 || true
@@ -658,23 +731,29 @@ main() {
     # 파라미터 파싱 (--version, --help는 여기서 처리)
     parse_args "$@"
 
-    echo -e "${BLUE}================================================================================${NC}"
-    echo -e "${BLUE}MySQL/MariaDB Security Vulnerability Auto-Remediation Script${NC}"
-    echo -e "${BLUE}================================================================================${NC}"
-    echo ""
+    if [ "$QUIET" != true ]; then
+        echo -e "${BLUE}================================================================================${NC}"
+        echo -e "${BLUE}MySQL/MariaDB Security Vulnerability Auto-Remediation Script${NC}"
+        echo -e "${BLUE}================================================================================${NC}"
+        echo ""
+    fi
 
-    # MySQL/MariaDB 환경 확인
-    check_mysql_environment
+    if [ "$DRY_RUN" = true ] && [ -n "$CHECK_RESULT_FILE" ] && [ -f "$CHECK_RESULT_FILE" ]; then
+        [ "$QUIET" = true ] || echo -e "${BLUE}[DRY-RUN] Using provided result file without DB connection preflight.${NC}"
+    else
+        # MySQL/MariaDB 환경 확인
+        check_mysql_environment
 
-    # MySQL 연결 확인
-    check_mysql_connection
+        # MySQL 연결 확인
+        check_mysql_connection
+    fi
 
     # 백업 디렉토리 생성
     create_backup_dir
 
     # 점검 결과 파일이 없으면 점검 스크립트 실행
     if [ -z "$CHECK_RESULT_FILE" ] || [ ! -f "$CHECK_RESULT_FILE" ]; then
-        echo -e "${YELLOW}[INFO] No check result file provided. Running vulnerability check first...${NC}"
+        [ "$QUIET" = true ] || echo -e "${YELLOW}[INFO] No check result file provided. Running vulnerability check first...${NC}"
 
         if [ ! -f "$CHECK_SCRIPT" ]; then
             echo -e "${RED}[ERROR] Check script not found: $CHECK_SCRIPT${NC}"
@@ -682,7 +761,11 @@ main() {
         fi
 
         # 점검 스크립트 실행
-        bash "$CHECK_SCRIPT" -h "$MYSQL_HOST" -P "$MYSQL_PORT" -u "$MYSQL_USER" -p "$MYSQL_PASSWORD"
+        check_args=(-h "$MYSQL_HOST" -P "$MYSQL_PORT" -u "$MYSQL_USER")
+        [ -n "$MYSQL_PASSWORD" ] && check_args+=(-p "$MYSQL_PASSWORD")
+        [ "$QUIET" = true ] && check_args+=(--quiet)
+        [ "$NO_COLOR" = true ] && check_args+=(--no-color)
+        bash "$CHECK_SCRIPT" "${check_args[@]}"
 
         # 가장 최근 생성된 결과 파일 찾기
         CHECK_RESULT_FILE=$(ls -t ${HOSTNAME}_*_mysql_result.txt 2>/dev/null | head -1)
@@ -692,18 +775,24 @@ main() {
             exit 1
         fi
 
-        echo -e "${GREEN}[SUCCESS] Vulnerability check completed: $CHECK_RESULT_FILE${NC}"
-        echo ""
+        if [ "$QUIET" != true ]; then
+            echo -e "${GREEN}[SUCCESS] Vulnerability check completed: $CHECK_RESULT_FILE${NC}"
+            echo ""
+        fi
     else
-        echo -e "${BLUE}[INFO] Using existing check result file: $CHECK_RESULT_FILE${NC}"
-        echo ""
+        if [ "$QUIET" != true ]; then
+            echo -e "${BLUE}[INFO] Using existing check result file: $CHECK_RESULT_FILE${NC}"
+            echo ""
+        fi
     fi
 
     # 조치 결과 파일 초기화
     init_fix_result_file
 
-    echo -e "${BLUE}[INFO] Starting vulnerability remediation...${NC}"
-    echo ""
+    if [ "$QUIET" != true ]; then
+        echo -e "${BLUE}[INFO] Starting vulnerability remediation...${NC}"
+        echo ""
+    fi
 
     # 최신 2026 DBMS 기준 MySQL/MariaDB 조치 실행 (D-* codes)
     fix_d01
@@ -720,22 +809,26 @@ main() {
     fix_d25
 
     # 최종 통계 출력
-    echo ""
-    echo -e "${BLUE}================================================================================${NC}"
-    echo -e "${BLUE}Remediation Summary${NC}"
-    echo -e "${BLUE}================================================================================${NC}"
-    echo -e "Total fixes attempted: ${TOTAL_FIXES}"
-    echo -e "${GREEN}Successful fixes: ${SUCCESS_FIXES}${NC}"
-    echo -e "${RED}Failed fixes: ${FAILED_FIXES}${NC}"
-    echo -e "${YELLOW}Skipped fixes: ${SKIPPED_FIXES}${NC}"
-    echo -e "${BLUE}================================================================================${NC}"
-    echo ""
-    echo -e "${BLUE}[INFO] Remediation result saved to: $FIX_RESULT_FILE${NC}"
-    echo -e "${BLUE}[INFO] Backup files saved to: $BACKUP_DIR${NC}"
-    echo ""
-    echo -e "${YELLOW}[IMPORTANT] Some changes require MySQL restart to take effect.${NC}"
-    echo -e "${YELLOW}[IMPORTANT] Review manual intervention items in the result file.${NC}"
-    echo ""
+    if [ "$QUIET" != true ]; then
+        echo ""
+        echo -e "${BLUE}================================================================================${NC}"
+        echo -e "${BLUE}Remediation Summary${NC}"
+        echo -e "${BLUE}================================================================================${NC}"
+        echo -e "Total fixes attempted: ${TOTAL_FIXES}"
+        echo -e "${GREEN}Successful fixes: ${SUCCESS_FIXES}${NC}"
+        echo -e "${RED}Failed fixes: ${FAILED_FIXES}${NC}"
+        echo -e "${YELLOW}Skipped fixes: ${SKIPPED_FIXES}${NC}"
+        echo -e "${BLUE}Planned fixes: ${PLANNED_FIXES}${NC}"
+        echo -e "${YELLOW}Manual fixes: ${MANUAL_FIXES}${NC}"
+        echo -e "${BLUE}================================================================================${NC}"
+        echo ""
+        echo -e "${BLUE}[INFO] Remediation result saved to: $FIX_RESULT_FILE${NC}"
+        echo -e "${BLUE}[INFO] Backup files saved to: $BACKUP_DIR${NC}"
+        echo ""
+        echo -e "${YELLOW}[IMPORTANT] Some changes require MySQL restart to take effect.${NC}"
+        echo -e "${YELLOW}[IMPORTANT] Review manual intervention items in the result file.${NC}"
+        echo ""
+    fi
 
     # 최종 통계를 결과 파일에도 기록
     {
@@ -747,6 +840,8 @@ main() {
         echo "Successful fixes: ${SUCCESS_FIXES}"
         echo "Failed fixes: ${FAILED_FIXES}"
         echo "Skipped fixes: ${SKIPPED_FIXES}"
+        echo "Planned fixes: ${PLANNED_FIXES}"
+        echo "Manual fixes: ${MANUAL_FIXES}"
         echo "================================================================================"
         echo ""
         echo "IMPORTANT NOTES:"

@@ -1,0 +1,40 @@
+================================================================================
+Security Vulnerability Auto-Remediation Report
+================================================================================
+Remediation Date: 2026-06-19 00:00:00
+Hostname: fixture-host
+OS Version: Rocky Linux release 9.4 (Blue Onyx)
+OS ID: rocky
+OS VERSION_ID: 9.4
+OS Major Version: 9
+Capability systemctl: true
+Capability systemd_runtime: true
+Capability authselect: true
+Capability faillock_conf: /etc/security/faillock.conf
+Capability pam_auth_files: /etc/pam.d/system-auth,/etc/pam.d/password-auth
+Capability firewall_backend: firewalld
+Capability package_manager: dnf
+Capability time_sync: chronyd,timedatectl
+Capability crypto_policies: true
+Capability selinux: Enforcing
+Capability network_tool: ss
+Backup Directory: /var/backup/security_fix_260619_000000
+Mode: DRY-RUN
+================================================================================
+
+[U-01] root 계정 원격 접속 제한
+Status: SKIPPED
+Detail: Already passed or N/A
+--------------------------------------------------------------------------------
+[U-02] 비밀번호 관리정책 설정
+Status: PLANNED
+Detail: Dry-run: would update password policy
+--------------------------------------------------------------------------------
+[U-63] sudo 명령어 접근 관리
+Status: MANUAL
+Detail: Dry-run: manual intervention required. Review sudoers policy.
+--------------------------------------------------------------------------------
+
+================================================================================
+Remediation Completed: 2026-06-19 00:00:00
+================================================================================

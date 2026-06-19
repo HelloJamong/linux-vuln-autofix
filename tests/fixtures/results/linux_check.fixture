@@ -1,0 +1,41 @@
+================================================================================
+Security Vulnerability Assessment Report
+================================================================================
+Assessment Date: 2026-06-19 00:00:00
+Hostname: fixture-host
+OS Version: Rocky Linux release 9.4 (Blue Onyx)
+OS ID: rocky
+OS VERSION_ID: 9.4
+OS Major Version: 9
+Capability systemctl: true
+Capability systemd_runtime: true
+Capability authselect: true
+Capability faillock_conf: /etc/security/faillock.conf
+Capability pam_auth_files: /etc/pam.d/system-auth,/etc/pam.d/password-auth
+Capability firewall_backend: firewalld
+Capability package_manager: dnf
+Capability time_sync: chronyd,timedatectl
+Capability crypto_policies: true
+Capability selinux: Enforcing
+Capability network_tool: ss
+================================================================================
+
+[U-01] root 계정 원격 접속 제한
+Status: PASS
+Detail: [Risk: HIGH] PermitRootLogin is set to no
+Risk: HIGH
+--------------------------------------------------------------------------------
+[U-02] 비밀번호 관리정책 설정
+Status: FAIL
+Detail: [Risk: HIGH] minlen not set or less than 8 (current: not set)
+Risk: HIGH
+--------------------------------------------------------------------------------
+[U-52] Telnet 서비스 비활성화
+Status: N/A
+Detail: [Risk: MEDIUM] Telnet service is not installed or not applicable
+Risk: MEDIUM
+--------------------------------------------------------------------------------
+
+================================================================================
+Assessment Completed: 2026-06-19 00:00:00
+================================================================================

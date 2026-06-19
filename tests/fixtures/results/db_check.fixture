@@ -1,0 +1,31 @@
+================================================================================
+MySQL/MariaDB Security Vulnerability Assessment Report
+================================================================================
+Assessment Date: 2026-06-19 00:00:00
+Hostname: fixture-host
+MySQL Host: localhost:3306
+MySQL Version: 8.0.36
+DB Product: mysql
+DB Version: 8.0.36
+DB Version Comment: MySQL Community Server
+================================================================================
+
+[D-01] 기본 계정의 비밀번호, 정책 등을 변경하여 사용
+Status: PASS
+Detail: [Risk: HIGH] Default/root account policy appears acceptable
+Risk: HIGH
+--------------------------------------------------------------------------------
+[D-02] 데이터베이스의 불필요 계정을 제거하거나, 잠금설정 후 사용
+Status: FAIL
+Detail: [Risk: HIGH] Anonymous accounts or test database found
+Risk: HIGH
+--------------------------------------------------------------------------------
+[D-06] DB 사용자 계정을 개별적으로 부여하여 사용
+Status: N/A
+Detail: [Risk: MEDIUM] Shared-account usage cannot be proven from DB metadata alone
+Risk: MEDIUM
+--------------------------------------------------------------------------------
+
+================================================================================
+Assessment Completed: 2026-06-19 00:00:00
+================================================================================
