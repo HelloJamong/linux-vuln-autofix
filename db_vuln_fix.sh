@@ -26,7 +26,6 @@ TIME=$(date +%H%M%S)
 FIX_RESULT_FILE="${HOSTNAME}_${DATE}_${TIME}_mysql_fix_result.txt"
 CHECK_SCRIPT="./db_vuln_check.sh"
 CHECK_RESULT_FILE=""
-SCRIPT_DIR=$(dirname "$(readlink -f "$0")")
 QUIET=false
 NO_COLOR=false
 DRY_RUN=false
