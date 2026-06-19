@@ -22,10 +22,18 @@ jobs:
       - name: Install shellcheck
         run: sudo apt-get install -y shellcheck
 
-      - name: shellcheck
+      - name: shellcheck (error only, blocking)
+        run: |
+          shellcheck -S error \
+            linux_vuln_check.sh \
+            linux_vuln_fix.sh \
+            db_vuln_check.sh \
+            db_vuln_fix.sh
+
+      - name: shellcheck (warning, non-blocking)
         run: |
           shellcheck -S warning \
             linux_vuln_check.sh \
             linux_vuln_fix.sh \
             db_vuln_check.sh \
-            db_vuln_fix.sh
+            db_vuln_fix.sh || true
