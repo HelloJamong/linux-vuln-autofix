@@ -1,6 +1,6 @@
 #!/bin/bash
 #===============================================================================
-# RHEL/Rocky Linux 9 보안 취약점 점검 스크립트
+# Rocky Linux 8.10/9.x 보안 취약점 점검 스크립트
 #
 # 설명: 시스템의 보안 취약점을 점검하고 결과를 파일로 저장합니다.
 # 출력: hostname_YYMMDD_hhmmss_result.txt 형식의 결과 파일
@@ -2817,6 +2817,19 @@ latest_check_u13() {
     local risk_level="MEDIUM"
     local method=""
 
+    # Rocky 9: crypto-policies back-end libuser.config 우선 확인
+    if [ "$CAP_CRYPTO_POLICIES" = "true" ]; then
+        local libuser_conf="/etc/crypto-policies/back-ends/libuser.config"
+        if [ -f "$libuser_conf" ]; then
+            local policy_hash
+            policy_hash=$(awk -F= '/^[[:space:]]*hash_type/ {gsub(/[[:space:]]/,"",$2); print toupper($2)}' "$libuser_conf" | tail -1)
+            if [[ "$policy_hash" =~ ^(SHA512|SHA256|YESCRYPT)$ ]]; then
+                log_result "$check_id" "$check_name" "PASS" "[Risk: ${risk_level}] ENCRYPT_METHOD is ${policy_hash} (crypto-policies)"
+                return
+            fi
+        fi
+    fi
+
     if [ -f /etc/login.defs ]; then
         method=$(grep -E '^[[:space:]]*ENCRYPT_METHOD[[:space:]]+' /etc/login.defs | tail -1 | awk '{print toupper($2)}')
     fi
@@ -2844,9 +2857,16 @@ latest_check_u02() {
     if [ -d /etc/security/pwquality.conf.d ]; then
         while IFS= read -r file; do pwquality_files+=("$file"); done < <(find /etc/security/pwquality.conf.d -maxdepth 1 -type f -name '*.conf' 2>/dev/null | sort)
     fi
+    local pam_fallback=false pam_pwquality_line=""
     if [ ${#pwquality_files[@]} -eq 0 ]; then
-        log_result "$check_id" "$check_name" "FAIL" "[Risk: ${risk_level}] pwquality configuration was not found"
-        return
+        # Rocky 8 / pwquality.conf 없는 경우: pam.d inline 설정 확인
+        pam_pwquality_line=$(grep -rh 'pam_pwquality\.so' /etc/pam.d/ 2>/dev/null \
+            | grep -v '^[[:space:]]*#' | head -1)
+        if [ -z "$pam_pwquality_line" ]; then
+            log_result "$check_id" "$check_name" "FAIL" "[Risk: ${risk_level}] pwquality configuration was not found"
+            return
+        fi
+        pam_fallback=true
     fi
 
     get_pwquality_value() {
@@ -2866,11 +2886,19 @@ latest_check_u02() {
     }
 
     local minlen dcredit ucredit lcredit ocredit pass_max_days pass_min_days
-    minlen=$(get_pwquality_value minlen)
-    dcredit=$(get_pwquality_value dcredit)
-    ucredit=$(get_pwquality_value ucredit)
-    lcredit=$(get_pwquality_value lcredit)
-    ocredit=$(get_pwquality_value ocredit)
+    if [ "$pam_fallback" = "true" ]; then
+        minlen=$(echo "$pam_pwquality_line" | grep -oP 'minlen=\K[0-9]+')
+        dcredit=$(echo "$pam_pwquality_line" | grep -oP 'dcredit=\K-?[0-9]+')
+        ucredit=$(echo "$pam_pwquality_line" | grep -oP 'ucredit=\K-?[0-9]+')
+        lcredit=$(echo "$pam_pwquality_line" | grep -oP 'lcredit=\K-?[0-9]+')
+        ocredit=$(echo "$pam_pwquality_line" | grep -oP 'ocredit=\K-?[0-9]+')
+    else
+        minlen=$(get_pwquality_value minlen)
+        dcredit=$(get_pwquality_value dcredit)
+        ucredit=$(get_pwquality_value ucredit)
+        lcredit=$(get_pwquality_value lcredit)
+        ocredit=$(get_pwquality_value ocredit)
+    fi
 
     if [[ "$minlen" =~ ^[0-9]+$ ]] && [ "$minlen" -ge 9 ]; then
         pass_details="${pass_details}minlen=${minlen}, "

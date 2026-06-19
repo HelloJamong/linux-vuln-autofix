@@ -112,13 +112,13 @@
 ### Added
 - **Linux 취약점 점검 스크립트** (`linux_vuln_check.sh`)
   - KISA 기준 Linux 보안 취약점 점검 (U-01 ~ U-72)
-  - RHEL/Rocky Linux 9 환경 자동 검증
+  - Rocky Linux 8.10/9.x 환경 자동 검증
   - 상세한 점검 결과 파일 생성 (`hostname_YYMMDD_hhmmss_result.txt`)
   - 위험도 분류 (HIGH/MEDIUM/LOW)
 
 - **Linux 취약점 자동 조치 스크립트** (`linux_vuln_fix.sh`)
   - 취약점 점검 결과 기반 자동 조치
-  - RHEL/Rocky Linux 9 환경 자동 검증
+  - Rocky Linux 8.10/9.x 환경 자동 검증
   - 자동 백업 기능 (`/var/backup/security_fix_*/`)
   - 조치 전 점검 결과 파일 자동 생성 옵션
   - 기존 점검 결과 파일 재사용 옵션 (`-f, --file`)
@@ -148,7 +148,7 @@
     - 각 항목별 취약점 설명, 점검 방법, 조치 방법, 주의사항, 검증 방법 포함
 
 - **환경 검증 기능**
-  - Linux 스크립트: RHEL/Rocky Linux 9 환경 자동 확인
+  - Linux 스크립트: Rocky Linux 8.10/9.x 환경 자동 확인
     - `/etc/os-release` 파일 기반 OS 종류 및 버전 검증
     - 미지원 환경에서 명확한 오류 메시지와 함께 종료
   - DB 스크립트: MySQL/MariaDB 설치 및 실행 상태 자동 확인
@@ -230,7 +230,7 @@
 - 각 버전의 릴리스 날짜는 YYYY-MM-DD 형식으로 표시됩니다.
 - 최신 버전이 항상 파일 상단에 위치합니다.
 
-[Unreleased]: https://github.com/yourusername/linux-vuln-autofix/compare/v26.05.01...HEAD
-[v26.05.01]: https://github.com/yourusername/linux-vuln-autofix/compare/v26.03.02...v26.05.01
-[v26.03.02]: https://github.com/yourusername/linux-vuln-autofix/compare/v26.03.01...v26.03.02
-[v26.03.01]: https://github.com/yourusername/linux-vuln-autofix/releases/tag/v26.03.01
+[Unreleased]: https://github.com/HelloJamong/linux-vuln-autofix/compare/v26.05.01...HEAD
+[v26.05.01]: https://github.com/HelloJamong/linux-vuln-autofix/compare/v26.03.02...v26.05.01
+[v26.03.02]: https://github.com/HelloJamong/linux-vuln-autofix/compare/v26.03.01...v26.03.02
+[v26.03.01]: https://github.com/HelloJamong/linux-vuln-autofix/releases/tag/v26.03.01
